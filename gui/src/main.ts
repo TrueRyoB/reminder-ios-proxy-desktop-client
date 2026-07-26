@@ -58,6 +58,19 @@ function escapeHtml(s: string): string {
   return div.innerHTML;
 }
 
+// Create/update/delete round-trip to the real Apple servers -- typically
+// well under a second, but with no visual feedback at all a slow network
+// blip just looks like the tap didn't register. Wraps any such call with
+// Framework7's built-in preloader overlay.
+async function withLoading<T>(fn: () => Promise<T>): Promise<T> {
+  app.preloader.show();
+  try {
+    return await fn();
+  } finally {
+    app.preloader.hide();
+  }
+}
+
 // Apple's `BadgeEmblem` values are internal icon-set identifiers (e.g.
 // "people2", "sport6") from the Reminders app's icon picker -- not SF Symbol
 // names, and SF Symbols can't be embedded here anyway (Apple-only license).
@@ -408,7 +421,7 @@ async function toggleCompleted(id: string, completed: boolean) {
   if (!r) return;
   try {
     const patch: Partial<Reminder> = completed && r.flagged ? { completed, flagged: false } : { completed };
-    await invoke<Reminder>("update_reminder", { reminder: { ...r, ...patch } });
+    await withLoading(() => invoke<Reminder>("update_reminder", { reminder: { ...r, ...patch } }));
     await refreshCurrentView();
     if (completed) promptNextTask(r);
   } catch (err) {
@@ -422,7 +435,7 @@ async function toggleFlag(id: string) {
   const r = currentReminders.find((x) => x.id === id);
   if (!r) return;
   try {
-    const updated = await invoke<Reminder>("update_reminder", { reminder: { ...r, flagged: !r.flagged } });
+    const updated = await withLoading(() => invoke<Reminder>("update_reminder", { reminder: { ...r, flagged: !r.flagged } }));
     const idx = currentReminders.findIndex((x) => x.id === id);
     if (idx >= 0) {
       currentReminders[idx] = { ...currentReminders[idx], ...updated };
@@ -477,7 +490,7 @@ async function applyEdit(patch: Partial<Reminder>) {
   if (errEl) errEl.textContent = "";
   try {
     const merged = { ...editingReminder, ...patch };
-    const updated = await invoke<Reminder>("update_reminder", { reminder: merged });
+    const updated = await withLoading(() => invoke<Reminder>("update_reminder", { reminder: merged }));
     editingReminder = { ...editingReminder, ...updated };
     const idx = currentReminders.findIndex((x) => x.id === updated.id);
     if (idx >= 0) {
@@ -506,16 +519,19 @@ function bindEditSheet() {
     const v = (e.target as HTMLInputElement).value;
     void applyEdit({ dueDate: v ? new Date(v).toISOString() : null });
   });
-  document.querySelector("#edit-delete-btn")?.addEventListener("click", async () => {
+  document.querySelector("#edit-delete-btn")?.addEventListener("click", () => {
     if (!editingReminder) return;
+    const reminder = editingReminder;
     const errEl = document.querySelector<HTMLElement>("#edit-error");
-    try {
-      await invoke("delete_reminder", { reminder: editingReminder });
-      editSheet.close();
-      await refreshCurrentView();
-    } catch (err) {
-      if (errEl) errEl.textContent = String(err);
-    }
+    app.dialog.confirm(`「${reminder.title}」を削除しますか？この操作は取り消せません。`, async () => {
+      try {
+        await withLoading(() => invoke("delete_reminder", { reminder }));
+        editSheet.close();
+        await refreshCurrentView();
+      } catch (err) {
+        if (errEl) errEl.textContent = String(err);
+      }
+    });
   });
   document.querySelector("#edit-close-btn")?.addEventListener("click", () => editSheet.close());
 }
@@ -559,11 +575,14 @@ async function handleReorder() {
   if (!list) return;
   if (remindersErrorEl) remindersErrorEl.textContent = "";
   try {
-    await invoke("reorder_list", { list, newOrder: ids });
-    // The list record's own change tag just advanced server-side; refresh
-    // the cache so a second reorder in this session doesn't submit a stale
-    // tag and get rejected by CloudKit's optimistic-concurrency check.
-    cachedLists = await invoke<RemindersList[]>("list_lists");
+    await withLoading(async () => {
+      await invoke("reorder_list", { list, newOrder: ids });
+      // The list record's own change tag just advanced server-side; refresh
+      // the cache so a second reorder in this session doesn't submit a
+      // stale tag and get rejected by CloudKit's optimistic-concurrency
+      // check.
+      cachedLists = await invoke<RemindersList[]>("list_lists");
+    });
   } catch (err) {
     if (remindersErrorEl) remindersErrorEl.textContent = String(err);
   }
@@ -646,14 +665,16 @@ function bindCreateSheet() {
     const errEl = document.querySelector<HTMLElement>("#create-error");
     if (!title || !listId) return;
     try {
-      await invoke("create_reminder", {
-        listId,
-        title,
-        notes: "",
-        priority: 0,
-        flagged: false,
-        dueDate: null,
-      });
+      await withLoading(() =>
+        invoke("create_reminder", {
+          listId,
+          title,
+          notes: "",
+          priority: 0,
+          flagged: false,
+          dueDate: null,
+        }),
+      );
       createSheet.close();
       await refreshCurrentView();
     } catch (err) {
