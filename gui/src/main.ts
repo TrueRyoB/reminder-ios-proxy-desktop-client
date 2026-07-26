@@ -71,6 +71,43 @@ async function withLoading<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+// Errors surfaced from Rust are raw anyhow chains (e.g. "CloudKit
+// /records/modify failed (421): ..." or "modify failed for 1 record(s):
+// Reminder/XXX: CONFLICT (...)") -- fine for handan/debugging, meaningless
+// to the user. This maps the recognizable failure classes to a plain
+// Japanese explanation and falls back to the raw message for anything else
+// (better to show something than to hide a real error entirely).
+function friendlyError(err: unknown): string {
+  const msg = String(err);
+  if (msg.includes("ログインしていません")) {
+    return "ログインが必要です。アプリを再起動してください。";
+  }
+  if (msg.includes("AUTHENTICATION_FAILED") || msg.includes("(401)") || msg.includes("(421)")) {
+    return "セッションの有効期限が切れました。アプリを再起動して再ログインしてください。";
+  }
+  if (msg.includes("CONFLICT")) {
+    return "この項目は他の場所(iPhoneなど)で更新されていました。表示を最新の状態に更新しました。";
+  }
+  if (msg.toLowerCase().includes("timed out") || msg.includes("request failed") || msg.toLowerCase().includes("connection")) {
+    return "ネットワークに接続できませんでした。しばらくしてからもう一度お試しください。";
+  }
+  return msg;
+}
+
+// A CloudKit "CONFLICT" means someone/something else changed this record
+// since we last fetched it (e.g. edited on another device) -- the stale
+// data we're holding needs refreshing, not just an error message.
+function isConflictError(err: unknown): boolean {
+  return String(err).includes("CONFLICT");
+}
+
+async function reportMutationError(err: unknown, errEl: HTMLElement | null) {
+  if (errEl) errEl.textContent = friendlyError(err);
+  if (isConflictError(err)) {
+    await refreshCurrentView();
+  }
+}
+
 // Apple's `BadgeEmblem` values are internal icon-set identifiers (e.g.
 // "people2", "sport6") from the Reminders app's icon picker -- not SF Symbol
 // names, and SF Symbols can't be embedded here anyway (Apple-only license).
@@ -265,7 +302,7 @@ async function selectList(listId: string, title: string) {
     renderReminders(reminders);
     showRemindersList();
   } catch (err) {
-    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+    if (remindersErrorEl) remindersErrorEl.textContent = friendlyError(err);
   }
   app.panel.close("left");
 }
@@ -308,7 +345,7 @@ async function selectSmartList(kind: SmartListKind, title: string) {
     renderReminders(filtered, true);
     showRemindersList();
   } catch (err) {
-    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+    if (remindersErrorEl) remindersErrorEl.textContent = friendlyError(err);
   }
   app.panel.close("left");
 }
@@ -364,7 +401,7 @@ async function selectDashboard() {
     if (remindersContainerEl) remindersContainerEl.style.display = "";
     if (addReminderBtn) addReminderBtn.style.display = "";
   } catch (err) {
-    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+    if (remindersErrorEl) remindersErrorEl.textContent = friendlyError(err);
   }
   app.panel.close("left");
 }
@@ -425,7 +462,7 @@ async function toggleCompleted(id: string, completed: boolean) {
     await refreshCurrentView();
     if (completed) promptNextTask(r);
   } catch (err) {
-    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+    await reportMutationError(err, remindersErrorEl);
   }
 }
 
@@ -442,7 +479,7 @@ async function toggleFlag(id: string) {
       renderReminders(currentReminders, currentView?.kind !== "list");
     }
   } catch (err) {
-    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+    await reportMutationError(err, remindersErrorEl);
   }
 }
 
@@ -498,7 +535,7 @@ async function applyEdit(patch: Partial<Reminder>) {
       renderReminders(currentReminders, currentView?.kind === "smart");
     }
   } catch (err) {
-    if (errEl) errEl.textContent = String(err);
+    await reportMutationError(err, errEl);
   }
 }
 
@@ -529,7 +566,7 @@ function bindEditSheet() {
         editSheet.close();
         await refreshCurrentView();
       } catch (err) {
-        if (errEl) errEl.textContent = String(err);
+        await reportMutationError(err, errEl);
       }
     });
   });
@@ -584,7 +621,7 @@ async function handleReorder() {
       cachedLists = await invoke<RemindersList[]>("list_lists");
     });
   } catch (err) {
-    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+    await reportMutationError(err, remindersErrorEl);
   }
 }
 
@@ -678,7 +715,7 @@ function bindCreateSheet() {
       createSheet.close();
       await refreshCurrentView();
     } catch (err) {
-      if (errEl) errEl.textContent = String(err);
+      if (errEl) errEl.textContent = friendlyError(err);
     }
   });
 }
@@ -699,7 +736,7 @@ async function onReady() {
     // landing view now, rather than auto-selecting the first list.
     await selectDashboard();
   } catch (err) {
-    if (listsErrorEl) listsErrorEl.textContent = String(err);
+    if (listsErrorEl) listsErrorEl.textContent = friendlyError(err);
   }
 }
 
