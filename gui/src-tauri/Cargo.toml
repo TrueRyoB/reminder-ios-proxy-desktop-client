@@ -19,7 +19,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 reminder-core = { path = "../../core" }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -28,4 +28,5 @@ anyhow = "1"
 reqwest = { version = "0.12", features = ["json", "cookies"] }
 keyring = "3"
 chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
 

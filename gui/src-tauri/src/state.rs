@@ -3,8 +3,9 @@
 //! bookkeeping updates from response headers), so it only needs to sit
 //! behind this mutex during the brief login/2FA window. Once `Ready`,
 //! `RemindersService` needs no lock at all (every method is `&self`) and
-//! can be shared via `Arc` with a background poller in a later milestone.
+//! can be shared via `Arc` with the background poller (`watch.rs`).
 
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use reminder_core::auth::AppleAuthClient;
@@ -36,4 +37,8 @@ impl AuthState {
 #[derive(Default)]
 pub struct AppState {
     pub auth: tokio::sync::Mutex<AuthState>,
+    /// Guards against spawning the background poller more than once --
+    /// `make_ready` runs on every successful `try_resume`/`login`/2FA, but
+    /// only the first should start `watch::spawn`.
+    pub watcher_started: AtomicBool,
 }

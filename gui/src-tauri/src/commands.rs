@@ -4,13 +4,14 @@
 //! already expose, mirroring the CLI's `ensure_login` but without any
 //! blocking stdin prompts.
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use reminder_core::reminders::{Reminder, RemindersList};
 use reminder_core::{auth, bootstrap, reminders, session_store};
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::state::{AppState, AuthState};
 
@@ -35,7 +36,11 @@ pub fn get_persisted_apple_id() -> Option<String> {
 /// interaction. `false` means there's nothing to resume, or Apple rejected
 /// it -- the frontend should fall back to showing the login Sheet.
 #[tauri::command]
-pub async fn try_resume(apple_id: String, state: State<'_, AppState>) -> Result<bool, String> {
+pub async fn try_resume(
+    apple_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
     let resumed = bootstrap::try_resume_session(&apple_id)
         .await
         .map_err(|e| e.to_string())?;
@@ -44,7 +49,7 @@ pub async fn try_resume(apple_id: String, state: State<'_, AppState>) -> Result<
         return Ok(false);
     };
 
-    make_ready(&state, http, &client_id, &account_data)
+    make_ready(&app, &state, http, &client_id, &account_data)
         .await
         .map_err(|e| e.to_string())?;
     Ok(true)
@@ -54,6 +59,7 @@ pub async fn try_resume(apple_id: String, state: State<'_, AppState>) -> Result<
 pub async fn login(
     apple_id: String,
     password: String,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<LoginResult, String> {
     let mut client = auth::AppleAuthClient::new(&apple_id).map_err(|e| e.to_string())?;
@@ -64,7 +70,7 @@ pub async fn login(
             let http = client.http_client();
             let client_id = client.client_id().to_string();
             persist_and_store_password(&client, &apple_id, &password).map_err(|e| e.to_string())?;
-            make_ready(&state, http, &client_id, &data)
+            make_ready(&app, &state, http, &client_id, &data)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(LoginResult::Complete)
@@ -83,6 +89,7 @@ pub async fn login(
 #[tauri::command]
 pub async fn submit_two_factor_code(
     code: String,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let (mut client, password) = {
@@ -106,7 +113,7 @@ pub async fn submit_two_factor_code(
     let http = client.http_client();
     let client_id = client.client_id().to_string();
     persist_and_store_password(&client, &apple_id, &password).map_err(|e| e.to_string())?;
-    make_ready(&state, http, &client_id, &data)
+    make_ready(&app, &state, http, &client_id, &data)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -196,17 +203,30 @@ pub async fn reorder_list(
 }
 
 async fn make_ready(
+    app: &AppHandle,
     state: &State<'_, AppState>,
     http: reqwest::Client,
     client_id: &str,
     account_data: &serde_json::Value,
 ) -> anyhow::Result<()> {
     let service_root = bootstrap::reminders_service_root(account_data)?;
-    let service = reminders::RemindersService::new(http, &service_root, client_id);
-    let mut guard = state.auth.lock().await;
-    *guard = AuthState::Ready {
-        reminders: Arc::new(service),
-    };
+    let service = Arc::new(reminders::RemindersService::new(http, &service_root, client_id));
+    {
+        let mut guard = state.auth.lock().await;
+        *guard = AuthState::Ready {
+            reminders: service.clone(),
+        };
+    }
+    // Guards against spawning a second poller if `make_ready` runs again
+    // later in the same process (e.g. a manual re-login after the session
+    // token expired) -- only the first successful login should start it.
+    if state
+        .watcher_started
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
+        crate::watch::spawn(app.clone(), service);
+    }
     Ok(())
 }
 
