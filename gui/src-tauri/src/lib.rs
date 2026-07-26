@@ -53,6 +53,16 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Adding a tray icon appears to make the main window start
+            // hidden by default on Windows (observed: the window exists
+            // with the configured size but `IsWindowVisible` is false until
+            // shown) -- show it explicitly rather than relying on
+            // whatever default behavior a tray-resident app gets.
+            if let Some(window) = app.get_webview_window("main") {
+                window.show()?;
+                window.set_focus()?;
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
