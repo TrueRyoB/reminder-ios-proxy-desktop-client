@@ -168,6 +168,7 @@ impl AppleAuthClient {
     /// `session_store::save_auth_state`.
     pub fn persisted_state(&self) -> crate::session_store::PersistedAuthState {
         crate::session_store::PersistedAuthState {
+            apple_id: Some(self.username.clone()),
             session_token: self.session.session_token.clone(),
             trust_token: self.session.trust_token.clone(),
             account_country: self.session.account_country.clone(),

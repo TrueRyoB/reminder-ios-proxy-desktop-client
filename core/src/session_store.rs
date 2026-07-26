@@ -13,6 +13,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct PersistedAuthState {
+    /// Needed so a GUI consumer can silently resume a session on startup
+    /// without any username input (the CLI sidesteps this by requiring
+    /// `--apple-id` on every invocation, but that's not an option for a GUI).
+    pub apple_id: Option<String>,
     pub session_token: Option<String>,
     pub trust_token: Option<String>,
     pub account_country: Option<String>,

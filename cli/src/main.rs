@@ -1,21 +1,17 @@
-mod auth;
-mod cloudkit;
-mod crdt;
-mod notify;
-mod reminders;
-mod session_store;
-mod srp;
-
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
+use reminder_core::{auth, bootstrap, notify, reminders, session_store};
 use serde_json::Value;
 
 #[derive(Parser)]
 #[command(name = "reminder-proxy-client")]
 struct Cli {
     /// Your Apple ID email.
+    // clap forbids a `global` arg from also being `required` (a global arg
+    // must be optional at every subcommand), so this is validated manually
+    // right after parsing instead.
     #[arg(long, global = true)]
-    apple_id: String,
+    apple_id: Option<String>,
 
     #[command(subcommand)]
     command: Commands,
@@ -95,18 +91,23 @@ async fn main() -> Result<()> {
         .init();
     let cli = Cli::parse();
 
-    if let Commands::Login = cli.command {
-        login_test(&cli.apple_id).await?;
-        return Ok(());
-    }
     if let Commands::TestNotify = cli.command {
         notify::send("reminder-proxy-client", "テスト通知です。これが見えれば通知機構は正常です。")?;
         println!("通知を送信しました。");
         return Ok(());
     }
 
-    let (http, client_id, account_data) = ensure_login(&cli.apple_id).await?;
-    let service_root = reminders_service_root(&account_data)?;
+    let apple_id = cli
+        .apple_id
+        .ok_or_else(|| anyhow!("--apple-id is required for this command"))?;
+
+    if let Commands::Login = cli.command {
+        login_test(&apple_id).await?;
+        return Ok(());
+    }
+
+    let (http, client_id, account_data) = ensure_login(&apple_id).await?;
+    let service_root = bootstrap::reminders_service_root(&account_data)?;
     let reminders = reminders::RemindersService::new(http, &service_root, &client_id);
 
     match cli.command {
@@ -227,45 +228,17 @@ async fn check_due_reminders(
     Ok(count)
 }
 
-fn reminders_service_root(account_data: &Value) -> Result<String> {
-    // pyicloud's RemindersService uses the shared CloudKit database
-    // webservice ("ckdatabasews"), not a "reminders"-named entry -- that
-    // key (if present at all) points at the legacy CalDAV-compat backend
-    // ("caldavj"), which doesn't speak the CloudKit JSON protocol at all.
-    account_data
-        .get("webservices")
-        .and_then(|v| v.get("ckdatabasews"))
-        .and_then(|v| v.get("url"))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| anyhow!("no ckdatabasews webservice URL in accountLogin response"))
-}
-
-const KEYRING_SERVICE: &str = "reminder-proxy-client";
-
 /// Log in (resuming a persisted session if possible) and return an
 /// authenticated HTTP client plus the `accountLogin` response data.
 async fn ensure_login(apple_id: &str) -> Result<(reqwest::Client, String, Value)> {
-    let dir = session_store::data_dir()?;
-    let cookie_jar = session_store::load_cookie_store(&dir);
-    let persisted = session_store::load_auth_state(&dir);
-
-    let mut client = auth::AppleAuthClient::with_state(apple_id, cookie_jar, &persisted)?;
-
-    if persisted.session_token.is_some() {
-        match client.try_resume().await {
-            Ok(data) => {
-                persist_state(&client, &dir)?;
-                return Ok((client.http_client(), client.client_id().to_string(), data));
-            }
-            Err(e) => {
-                eprintln!("[debug] セッション再開に失敗、通常ログインにフォールバックします: {e}");
-                client = auth::AppleAuthClient::new(apple_id)?;
-            }
-        }
+    if let Some(resumed) = bootstrap::try_resume_session(apple_id).await? {
+        return Ok(resumed);
     }
 
-    let keyring_entry = keyring::Entry::new(KEYRING_SERVICE, apple_id)?;
+    let dir = session_store::data_dir()?;
+    let mut client = auth::AppleAuthClient::new(apple_id)?;
+
+    let keyring_entry = keyring::Entry::new(bootstrap::KEYRING_SERVICE, apple_id)?;
     let (password, from_keyring) = match keyring_entry.get_password() {
         Ok(p) => (p, true),
         Err(_) => (
@@ -291,7 +264,7 @@ async fn ensure_login(apple_id: &str) -> Result<(reqwest::Client, String, Value)
         eprintln!("[警告] パスワードをキーリングに保存できませんでした: {e}");
     }
 
-    persist_state(&client, &dir)?;
+    bootstrap::persist_state(&client, &dir)?;
     Ok((client.http_client(), client.client_id().to_string(), data))
 }
 
@@ -299,13 +272,6 @@ async fn login_test(apple_id: &str) -> Result<()> {
     let (_, _, data) = ensure_login(apple_id).await?;
     println!("ログイン成功。");
     print_webservices(&data);
-    Ok(())
-}
-
-fn persist_state(client: &auth::AppleAuthClient, dir: &std::path::Path) -> Result<()> {
-    let cookies = client.snapshot_cookie_store()?;
-    session_store::save_cookie_store(dir, &cookies)?;
-    session_store::save_auth_state(dir, &client.persisted_state())?;
     Ok(())
 }
 
