@@ -6,6 +6,7 @@ use state::AppState;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, WindowEvent};
+use tauri_plugin_window_state::{AppHandleExt as _, StateFlags};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +19,11 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Persists/restores window position, size, and maximized state
+        // across restarts (QA-F) -- without this, the window always opens
+        // at the fixed 800x600 default from tauri.conf.json regardless of
+        // how the user last left it.
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_persisted_apple_id,
@@ -40,6 +46,12 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app, event| {
                     if event.id() == "quit" {
+                        // The window-state plugin only persists on a clean
+                        // exit; our own hide-to-tray CloseRequested handler
+                        // means the window is never actually closed until
+                        // this explicit quit path, so save here rather than
+                        // trusting an exit hook to fire in time.
+                        let _ = app.save_window_state(StateFlags::all());
                         app.exit(0);
                     }
                 })
@@ -76,6 +88,11 @@ pub fn run() {
             // Closing the window would otherwise drop the background poller
             // along with it; hide instead so due-reminder notifications
             // keep firing until the user explicitly quits from the tray.
+            // (Verified separately -- handan/0028 -- that window-state's
+            // save-on-exit mechanism itself works correctly when the window
+            // is allowed to close normally; our explicit
+            // save_window_state() call in the tray quit handler covers the
+            // hide-to-tray path where that natural exit never happens.)
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
