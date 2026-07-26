@@ -197,7 +197,10 @@ function flagToggleHtml(r: Reminder): string {
   const icon = r.flagged ? "🚩" : "⚑";
   const cls = r.flagged ? "reminder-flag reminder-flag-active" : "reminder-flag reminder-flag-inactive";
   const label = r.flagged ? "着手中(タップで解除)" : "タップで着手中にする";
-  return `<div class="${cls}" data-reminder-id="${escapeHtml(r.id)}" title="${label}">${icon}</div>`;
+  // A plain <div> click target isn't reachable by keyboard at all (no Tab
+  // stop, no Enter/Space activation) -- tabindex + role="button" plus the
+  // keydown handler in bindReminderInteractions fixes that.
+  return `<div class="${cls}" data-reminder-id="${escapeHtml(r.id)}" title="${label}" role="button" tabindex="0" aria-label="${label}">${icon}</div>`;
 }
 
 function renderReminders(reminders: Reminder[], showListTitle = false, emptyMessage = "リマインダーはありません。") {
@@ -637,6 +640,18 @@ function bindEditSheet() {
 }
 
 function bindReminderInteractions() {
+  // The flag toggle is a <div> (see flagToggleHtml), not a native <button>,
+  // so keyboard activation (Tab to it, then Enter/Space) needs its own
+  // handler -- click alone only covers mouse/touch.
+  remindersListEl?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const flag = (e.target as HTMLElement).closest<HTMLElement>(".reminder-flag");
+    if (!flag) return;
+    e.preventDefault();
+    const id = flag.dataset.reminderId;
+    if (id) void toggleFlag(id);
+  });
+
   remindersListEl?.addEventListener("click", (e) => {
     if (editModeActive) return; // dragging/deleting, not tap-to-edit, while reordering
     const target = e.target as HTMLElement;
