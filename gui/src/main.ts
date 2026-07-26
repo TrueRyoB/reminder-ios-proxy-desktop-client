@@ -84,11 +84,13 @@ function renderLists(lists: RemindersList[]) {
     .join("");
 }
 
-function renderReminders(reminders: Reminder[]) {
+function renderReminders(reminders: Reminder[], showListTitle = false) {
   if (!remindersListEl) return;
   remindersListEl.innerHTML = reminders
     .map((r) => {
       const due = r.dueDate ? new Date(r.dueDate).toLocaleString("ja-JP") : "";
+      const listBadge =
+        showListTitle && "listTitle" in r ? `<div class="item-footer">${escapeHtml((r as AggregatedReminder).listTitle)}</div>` : "";
       return `
         <li>
           <div class="item-content">
@@ -102,11 +104,40 @@ function renderReminders(reminders: Reminder[]) {
               </div>
               ${due || r.desc ? `<div class="item-subtitle">${escapeHtml(due)}</div>` : ""}
               ${r.desc ? `<div class="item-text">${escapeHtml(r.desc)}</div>` : ""}
+              ${listBadge}
             </div>
           </div>
         </li>`;
     })
     .join("");
+}
+
+/// Cached from the last `list_lists` fetch so smart lists (which aggregate
+/// across every list) don't need to re-fetch it on every click.
+let cachedLists: RemindersList[] = [];
+
+type AggregatedReminder = Reminder & { listTitle: string };
+
+async function fetchAllReminders(): Promise<AggregatedReminder[]> {
+  const perList = await Promise.all(
+    cachedLists.map(async (list) => {
+      const items = await invoke<Reminder[]>("list_reminders", {
+        listId: list.id,
+        includeCompleted: false,
+      });
+      return items.map((r) => ({ ...r, listTitle: list.title }));
+    }),
+  );
+  return perList.flat();
+}
+
+/// End of "today" in local time -- used as the Today smart list's cutoff so
+/// overdue items (due before today) are included too, matching the native
+/// Reminders app's own Today behavior.
+function endOfToday(): Date {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d;
 }
 
 async function selectList(listId: string, title: string) {
@@ -125,14 +156,72 @@ async function selectList(listId: string, title: string) {
   app.panel.close("left");
 }
 
+type SmartListKind = "today" | "scheduled" | "flagged" | "all";
+
+// Design decision (see project plan / design-critique notes): the native
+// Reminders app's Today view is ascending (oldest first) and requires
+// scrolling past old overdue items to see what's actually due soon. This
+// deliberately inverts that -- newest/most-recent due date first, so the
+// most time-sensitive items are immediately visible without scrolling.
+async function selectSmartList(kind: SmartListKind, title: string) {
+  if (mainTitleEl) mainTitleEl.textContent = title;
+  if (remindersErrorEl) remindersErrorEl.textContent = "";
+  try {
+    const all = await fetchAllReminders();
+    let filtered: AggregatedReminder[];
+    switch (kind) {
+      case "today": {
+        const cutoff = endOfToday();
+        filtered = all.filter((r) => r.dueDate && new Date(r.dueDate) <= cutoff);
+        filtered.sort((a, b) => new Date(b.dueDate as string).getTime() - new Date(a.dueDate as string).getTime());
+        break;
+      }
+      case "scheduled": {
+        filtered = all.filter((r) => r.dueDate);
+        filtered.sort((a, b) => new Date(a.dueDate as string).getTime() - new Date(b.dueDate as string).getTime());
+        break;
+      }
+      case "flagged":
+        filtered = all.filter((r) => r.flagged);
+        break;
+      default:
+        filtered = all;
+    }
+    renderReminders(filtered, true);
+    if (remindersContainerEl) remindersContainerEl.style.display = "";
+  } catch (err) {
+    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+  }
+  app.panel.close("left");
+}
+
+const SMART_LIST_TITLES: Record<SmartListKind, string> = {
+  today: "今日",
+  scheduled: "予定",
+  flagged: "フラグ付き",
+  all: "すべて",
+};
+
 function bindListSelection() {
-  listsListEl?.addEventListener("click", (e) => {
-    const link = (e.target as HTMLElement).closest<HTMLElement>(".list-item");
-    if (!link) return;
-    e.preventDefault();
-    const listId = link.dataset.listId;
-    const title = link.querySelector(".item-title")?.textContent ?? "";
-    if (listId) void selectList(listId, title);
+  const panelContent = document.querySelector<HTMLElement>("#lists-panel-content");
+  panelContent?.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+
+    const smartLink = target.closest<HTMLElement>(".smart-item");
+    if (smartLink) {
+      e.preventDefault();
+      const kind = smartLink.dataset.smartId as SmartListKind | undefined;
+      if (kind) void selectSmartList(kind, SMART_LIST_TITLES[kind]);
+      return;
+    }
+
+    const listLink = target.closest<HTMLElement>(".list-item");
+    if (listLink) {
+      e.preventDefault();
+      const listId = listLink.dataset.listId;
+      const title = listLink.querySelector(".item-title")?.textContent ?? "";
+      if (listId) void selectList(listId, title);
+    }
   });
 }
 
@@ -142,6 +231,7 @@ async function onReady() {
   if (listsErrorEl) listsErrorEl.textContent = "";
   try {
     const lists = await invoke<RemindersList[]>("list_lists");
+    cachedLists = lists;
     renderLists(lists);
     if (lists.length > 0) {
       await selectList(lists[0].id, lists[0].title);
