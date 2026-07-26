@@ -9,6 +9,13 @@ use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Defaults to "info" (rather than requiring RUST_LOG) so the QA-A
+    // load-time instrumentation (see commands.rs) is visible in `cargo
+    // tauri dev`'s terminal output without extra setup.
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::new("info"))
+        .init();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())

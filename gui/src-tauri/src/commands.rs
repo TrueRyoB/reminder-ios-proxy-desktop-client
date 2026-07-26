@@ -41,9 +41,11 @@ pub async fn try_resume(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<bool, String> {
+    let start = std::time::Instant::now();
     let resumed = bootstrap::try_resume_session(&apple_id)
         .await
         .map_err(|e| e.to_string())?;
+    tracing::info!(elapsed_ms = start.elapsed().as_millis(), "try_resume (network)");
 
     let Some((http, client_id, account_data)) = resumed else {
         return Ok(false);
@@ -132,10 +134,30 @@ async fn reminders_service(state: &State<'_, AppState>) -> Result<Arc<reminders:
         .ok_or_else(|| "ログインしていません".to_string())
 }
 
+/// Uses the persisted `ListCache` (see QA-A / handan/0025) so this is an
+/// incremental diff against CloudKit after the first call, rather than a
+/// full replay of the account's entire List change history every time --
+/// that replay was measured at ~30s on an account with a lot of history,
+/// the dominant cost in the whole app's cold-start load time.
 #[tauri::command]
 pub async fn list_lists(state: State<'_, AppState>) -> Result<Vec<RemindersList>, String> {
+    let start = std::time::Instant::now();
     let reminders = reminders_service(&state).await?;
-    reminders.lists().await.map_err(|e| e.to_string())
+    let dir = session_store::data_dir().map_err(|e| e.to_string())?;
+    let mut cache = session_store::load_list_cache(&dir);
+
+    let result = reminders.lists_cached(&mut cache).await.map_err(|e| e.to_string());
+    if result.is_ok() {
+        if let Err(e) = session_store::save_list_cache(&dir, &cache) {
+            tracing::warn!(error = %e, "failed to persist list cache");
+        }
+    }
+    tracing::info!(
+        elapsed_ms = start.elapsed().as_millis(),
+        cached_lists = cache.records.len(),
+        "list_lists (incremental)"
+    );
+    result
 }
 
 #[tauri::command]
@@ -144,11 +166,18 @@ pub async fn list_reminders(
     include_completed: bool,
     state: State<'_, AppState>,
 ) -> Result<Vec<Reminder>, String> {
+    let start = std::time::Instant::now();
     let reminders = reminders_service(&state).await?;
-    reminders
+    let result = reminders
         .list_reminders(&list_id, include_completed)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+    tracing::info!(
+        elapsed_ms = start.elapsed().as_millis(),
+        list_id = %list_id,
+        "list_reminders (network)"
+    );
+    result
 }
 
 #[allow(clippy::too_many_arguments)]

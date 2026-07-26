@@ -41,6 +41,17 @@ pub struct RemindersList {
     pub badge_emblem: Option<String>,
 }
 
+/// A caller-persisted cache backing `RemindersService::lists_cached`: the
+/// last-seen sync token plus every raw List record seen so far, keyed by
+/// `recordName`. Callers are responsible for loading/saving this across
+/// restarts (see `session_store::load_list_cache`/`save_list_cache`) --
+/// this type only knows how to merge an incremental diff into itself.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ListCache {
+    pub sync_token: Option<String>,
+    pub records: std::collections::HashMap<String, Value>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reminder {
@@ -88,10 +99,46 @@ impl RemindersService {
 
     /// All reminder lists. CloudKit has no `/records/query` support for the
     /// bare `List` record type; it must be fetched via `/changes/zone`.
+    ///
+    /// This always replays the *entire* zone change history (no sync
+    /// token), which is correct for a one-shot CLI invocation but is far
+    /// too slow to call on every app launch on an account with a lot of
+    /// history (~30s measured -- see QA-A). Long-lived callers like the
+    /// GUI should use `lists_cached` instead.
     pub async fn lists(&self) -> Result<Vec<RemindersList>> {
-        let records = self.client.changes_all(&["List"]).await?;
+        let (records, _token) = self.client.changes_all(&["List"], None).await?;
         Ok(records
             .iter()
+            .filter(|r| record_type(r).as_deref() == Some("List"))
+            .filter_map(record_to_list)
+            .collect())
+    }
+
+    /// Incremental variant of `lists()` for callers that persist a
+    /// `ListCache` across restarts (the GUI): on repeat calls this only
+    /// asks CloudKit for what changed since `cache.sync_token`, merges the
+    /// diff (upserts and deletions) into the cache, and returns the
+    /// resulting full current set -- avoiding a full change-history replay
+    /// every time `lists()` would otherwise require.
+    pub async fn lists_cached(&self, cache: &mut ListCache) -> Result<Vec<RemindersList>> {
+        let (changed, new_token) = self
+            .client
+            .changes_all(&["List"], cache.sync_token.as_deref())
+            .await?;
+
+        for record in changed {
+            let Some(name) = record_name(&record) else { continue };
+            if record.get("deleted").and_then(Value::as_bool) == Some(true) {
+                cache.records.remove(&name);
+            } else {
+                cache.records.insert(name, record);
+            }
+        }
+        cache.sync_token = new_token;
+
+        Ok(cache
+            .records
+            .values()
             .filter(|r| record_type(r).as_deref() == Some("List"))
             .filter_map(record_to_list)
             .collect())

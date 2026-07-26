@@ -42,6 +42,28 @@ fn auth_state_path(dir: &Path) -> PathBuf {
     dir.join("auth_state.json")
 }
 
+fn list_cache_path(dir: &Path) -> PathBuf {
+    dir.join("list_cache.json")
+}
+
+/// Backs `RemindersService::lists_cached` (see QA-A): without this, every
+/// app launch replayed the account's *entire* List change history via
+/// CloudKit's `/changes/zone` (no sync token = "everything since zone
+/// creation"), measured at ~30s on an account with a lot of history.
+/// Persisting the merged cache + sync token here makes every launch after
+/// the first an incremental diff instead.
+pub fn load_list_cache(dir: &Path) -> crate::reminders::ListCache {
+    fs::read_to_string(list_cache_path(dir))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_list_cache(dir: &Path, cache: &crate::reminders::ListCache) -> Result<()> {
+    let json = serde_json::to_string_pretty(cache)?;
+    fs::write(list_cache_path(dir), json).context("failed to write list_cache.json")
+}
+
 /// Returns an empty store if nothing is persisted yet, or the persisted
 /// file is unreadable/corrupt (treated as "start fresh", not a hard error).
 pub fn load_cookie_store(dir: &Path) -> CookieStore {

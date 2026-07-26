@@ -133,13 +133,29 @@ impl CloudKitClient {
             .unwrap_or_default())
     }
 
-    /// Fetch all records of the given types via `/changes/zone`, paging
-    /// through `moreComing`/`syncToken` until the server reports no more.
-    /// This is how Lists are fetched (there is no `/records/query` support
-    /// for the bare `List` record type).
-    pub async fn changes_all(&self, desired_record_types: &[&str]) -> Result<Vec<Value>> {
+    /// Fetch record changes via `/changes/zone`, paging through
+    /// `moreComing`/`syncToken` until the server reports no more. This is
+    /// how Lists are fetched (there is no `/records/query` support for the
+    /// bare `List` record type).
+    ///
+    /// Passing `sync_token` from a previous call returns only what changed
+    /// since then (an incremental diff -- possibly empty); passing `None`
+    /// replays the *entire* change history of the zone from its creation,
+    /// which is what made this the dominant cold-start cost on accounts
+    /// with a lot of history (~30s measured -- see QA-A). Callers that need
+    /// the full current state on every call (not just a diff) must merge
+    /// the returned records into their own persisted cache themselves; see
+    /// `RemindersService::lists_cached`.
+    ///
+    /// Returns the fetched records alongside the final sync token, which
+    /// the caller should persist and pass back in next time.
+    pub async fn changes_all(
+        &self,
+        desired_record_types: &[&str],
+        sync_token: Option<&str>,
+    ) -> Result<(Vec<Value>, Option<String>)> {
         let mut all_records = Vec::new();
-        let mut sync_token: Option<String> = None;
+        let mut sync_token = sync_token.map(str::to_string);
 
         loop {
             let mut zone_req = json!({
@@ -178,7 +194,7 @@ impl CloudKitClient {
             }
         }
 
-        Ok(all_records)
+        Ok((all_records, sync_token))
     }
 
     /// Create/update/delete a single record. `fields` must already be in
