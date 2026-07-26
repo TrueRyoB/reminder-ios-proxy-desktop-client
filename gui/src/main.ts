@@ -144,8 +144,23 @@ type ViewState = { kind: "list"; id: string; title: string } | { kind: "smart"; 
 let currentView: ViewState | null = null;
 let currentReminders: (Reminder | AggregatedReminder)[] = [];
 
+const editModeBtn = document.querySelector<HTMLElement>("#edit-mode-btn");
+let editModeActive = false;
+
+// Reordering is only meaningful for a single concrete list -- a smart list
+// is a client-side aggregate across many lists' own independent orders, so
+// there is no single "list" to persist a drag-reorder into.
+function exitEditMode() {
+  if (!editModeActive) return;
+  editModeActive = false;
+  if (remindersContainerEl) app.sortable.disable(remindersContainerEl);
+  if (editModeBtn) editModeBtn.textContent = "編集";
+}
+
 async function selectList(listId: string, title: string) {
   currentView = { kind: "list", id: listId, title };
+  exitEditMode();
+  if (editModeBtn) editModeBtn.style.display = "";
   if (mainTitleEl) mainTitleEl.textContent = title;
   if (remindersErrorEl) remindersErrorEl.textContent = "";
   try {
@@ -171,6 +186,8 @@ type SmartListKind = "today" | "scheduled" | "flagged" | "all";
 // most time-sensitive items are immediately visible without scrolling.
 async function selectSmartList(kind: SmartListKind, title: string) {
   currentView = { kind: "smart", smart: kind, title };
+  exitEditMode();
+  if (editModeBtn) editModeBtn.style.display = "none";
   if (mainTitleEl) mainTitleEl.textContent = title;
   if (remindersErrorEl) remindersErrorEl.textContent = "";
   try {
@@ -339,6 +356,7 @@ function bindEditSheet() {
 
 function bindReminderInteractions() {
   remindersListEl?.addEventListener("click", (e) => {
+    if (editModeActive) return; // dragging/deleting, not tap-to-edit, while reordering
     const target = e.target as HTMLElement;
 
     const checkbox = target.closest<HTMLInputElement>(".reminder-checkbox");
@@ -351,6 +369,48 @@ function bindReminderInteractions() {
 
     const li = target.closest<HTMLElement>("li[data-reminder-id]");
     if (li?.dataset.reminderId) openEditSheet(li.dataset.reminderId);
+  });
+}
+
+// After a drag-reorder, read the new order straight off the DOM (rather
+// than trusting the sortable event's own from/to indices) so this stays
+// correct regardless of exactly how Framework7 reports the move.
+async function handleReorder() {
+  if (!currentView || currentView.kind !== "list" || !remindersListEl) return;
+  const listId = currentView.id;
+  const ids = Array.from(remindersListEl.querySelectorAll<HTMLElement>("li[data-reminder-id]"))
+    .map((li) => li.dataset.reminderId)
+    .filter((id): id is string => Boolean(id));
+  const list = cachedLists.find((l) => l.id === listId);
+  if (!list) return;
+  if (remindersErrorEl) remindersErrorEl.textContent = "";
+  try {
+    await invoke("reorder_list", { list, newOrder: ids });
+    // The list record's own change tag just advanced server-side; refresh
+    // the cache so a second reorder in this session doesn't submit a stale
+    // tag and get rejected by CloudKit's optimistic-concurrency check.
+    cachedLists = await invoke<RemindersList[]>("list_lists");
+  } catch (err) {
+    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+  }
+}
+
+function bindEditModeToggle() {
+  editModeBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (!remindersContainerEl || !currentView || currentView.kind !== "list") return;
+    editModeActive = !editModeActive;
+    if (editModeActive) {
+      app.sortable.enable(remindersContainerEl);
+      editModeBtn.textContent = "完了";
+    } else {
+      app.sortable.disable(remindersContainerEl);
+      editModeBtn.textContent = "編集";
+    }
+  });
+
+  remindersListEl?.addEventListener("sortable:sort", () => {
+    void handleReorder();
   });
 }
 
@@ -401,6 +461,7 @@ async function onReady() {
   bindReminderInteractions();
   bindEditSheet();
   bindCreateSheet();
+  bindEditModeToggle();
   if (listsErrorEl) listsErrorEl.textContent = "";
   try {
     const lists = await invoke<RemindersList[]>("list_lists");

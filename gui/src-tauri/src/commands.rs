@@ -179,6 +179,22 @@ pub async fn delete_reminder(reminder: Reminder, state: State<'_, AppState>) -> 
     reminders.delete(&reminder).await.map_err(|e| e.to_string())
 }
 
+/// Rewrite a list's manual sort order (drag-reorder in edit mode). Takes the
+/// full `RemindersList` (not just its id) because CloudKit's optimistic
+/// concurrency check needs the list record's own `record_change_tag`.
+#[tauri::command]
+pub async fn reorder_list(
+    list: RemindersList,
+    new_order: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let reminders = reminders_service(&state).await?;
+    reminders
+        .reorder(&list, &new_order)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 async fn make_ready(
     state: &State<'_, AppState>,
     http: reqwest::Client,

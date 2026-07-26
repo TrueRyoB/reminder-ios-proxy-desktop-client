@@ -18,6 +18,7 @@ pub fn run() {
             commands::create_reminder,
             commands::update_reminder,
             commands::delete_reminder,
+            commands::reorder_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
