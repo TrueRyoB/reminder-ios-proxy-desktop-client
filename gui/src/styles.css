@@ -1,0 +1,21 @@
+/* Apple's own SF Pro cannot be embedded (mockup-only license), so we rely on
+   the platform UI font stack + Framework7's iOS-theme spacing/scale for
+   iOS-ish feel rather than exact glyph matching. */
+:root {
+  font-family:
+    -apple-system,
+    system-ui,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+
+/* Semantic color tokens (placeholder set for GUI-9 dark mode work -- kept
+   here from the start so later milestones extend rather than introduce
+   this pattern). */
+:root {
+  --sb-blue: #007aff;
+}
+:root.theme-dark {
+  --sb-blue: #0a84ff;
+}
