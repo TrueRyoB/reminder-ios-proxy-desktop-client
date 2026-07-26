@@ -92,10 +92,10 @@ function renderReminders(reminders: Reminder[], showListTitle = false) {
       const listBadge =
         showListTitle && "listTitle" in r ? `<div class="item-footer">${escapeHtml((r as AggregatedReminder).listTitle)}</div>` : "";
       return `
-        <li>
+        <li data-reminder-id="${escapeHtml(r.id)}">
           <div class="item-content">
             <div class="item-media">
-              <input type="checkbox" disabled ${r.completed ? "checked" : ""} />
+              <input type="checkbox" class="reminder-checkbox" data-reminder-id="${escapeHtml(r.id)}" ${r.completed ? "checked" : ""} />
             </div>
             <div class="item-inner">
               <div class="item-title-row">
@@ -140,7 +140,12 @@ function endOfToday(): Date {
   return d;
 }
 
+type ViewState = { kind: "list"; id: string; title: string } | { kind: "smart"; smart: SmartListKind; title: string };
+let currentView: ViewState | null = null;
+let currentReminders: (Reminder | AggregatedReminder)[] = [];
+
 async function selectList(listId: string, title: string) {
+  currentView = { kind: "list", id: listId, title };
   if (mainTitleEl) mainTitleEl.textContent = title;
   if (remindersErrorEl) remindersErrorEl.textContent = "";
   try {
@@ -148,6 +153,7 @@ async function selectList(listId: string, title: string) {
       listId,
       includeCompleted: false,
     });
+    currentReminders = reminders;
     renderReminders(reminders);
     if (remindersContainerEl) remindersContainerEl.style.display = "";
   } catch (err) {
@@ -164,6 +170,7 @@ type SmartListKind = "today" | "scheduled" | "flagged" | "all";
 // deliberately inverts that -- newest/most-recent due date first, so the
 // most time-sensitive items are immediately visible without scrolling.
 async function selectSmartList(kind: SmartListKind, title: string) {
+  currentView = { kind: "smart", smart: kind, title };
   if (mainTitleEl) mainTitleEl.textContent = title;
   if (remindersErrorEl) remindersErrorEl.textContent = "";
   try {
@@ -187,12 +194,19 @@ async function selectSmartList(kind: SmartListKind, title: string) {
       default:
         filtered = all;
     }
+    currentReminders = filtered;
     renderReminders(filtered, true);
     if (remindersContainerEl) remindersContainerEl.style.display = "";
   } catch (err) {
     if (remindersErrorEl) remindersErrorEl.textContent = String(err);
   }
   app.panel.close("left");
+}
+
+async function refreshCurrentView() {
+  if (!currentView) return;
+  if (currentView.kind === "list") await selectList(currentView.id, currentView.title);
+  else await selectSmartList(currentView.smart, currentView.title);
 }
 
 const SMART_LIST_TITLES: Record<SmartListKind, string> = {
@@ -225,9 +239,168 @@ function bindListSelection() {
   });
 }
 
+async function toggleCompleted(id: string, completed: boolean) {
+  const r = currentReminders.find((x) => x.id === id);
+  if (!r) return;
+  try {
+    await invoke<Reminder>("update_reminder", { reminder: { ...r, completed } });
+    await refreshCurrentView();
+  } catch (err) {
+    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+  }
+}
+
+const editSheet = app.sheet.create({
+  el: document.querySelector("#edit-sheet") as HTMLElement,
+  backdrop: true,
+});
+
+let editingReminder: Reminder | AggregatedReminder | null = null;
+
+function toLocalDatetimeInputValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function openEditSheet(id: string) {
+  const r = currentReminders.find((x) => x.id === id);
+  if (!r) return;
+  editingReminder = r;
+
+  const titleInput = document.querySelector<HTMLInputElement>("#edit-title");
+  const notesInput = document.querySelector<HTMLTextAreaElement>("#edit-notes");
+  const priorityInput = document.querySelector<HTMLSelectElement>("#edit-priority");
+  const flaggedInput = document.querySelector<HTMLInputElement>("#edit-flagged");
+  const dueInput = document.querySelector<HTMLInputElement>("#edit-due-date");
+  const errEl = document.querySelector<HTMLElement>("#edit-error");
+
+  if (titleInput) titleInput.value = r.title;
+  if (notesInput) notesInput.value = r.desc;
+  if (priorityInput) priorityInput.value = String(r.priority);
+  if (flaggedInput) flaggedInput.checked = r.flagged;
+  if (dueInput) dueInput.value = r.dueDate ? toLocalDatetimeInputValue(new Date(r.dueDate)) : "";
+  if (errEl) errEl.textContent = "";
+
+  editSheet.open();
+}
+
+// Every field applies immediately on change -- deliberately not gated
+// behind an explicit "Done"/save button (see project plan: the native
+// Reminders app delays applying a date change until "Done" is tapped,
+// which design-critique sources flag as a source of confusion).
+async function applyEdit(patch: Partial<Reminder>) {
+  if (!editingReminder) return;
+  const errEl = document.querySelector<HTMLElement>("#edit-error");
+  if (errEl) errEl.textContent = "";
+  try {
+    const merged = { ...editingReminder, ...patch };
+    const updated = await invoke<Reminder>("update_reminder", { reminder: merged });
+    editingReminder = { ...editingReminder, ...updated };
+    const idx = currentReminders.findIndex((x) => x.id === updated.id);
+    if (idx >= 0) {
+      currentReminders[idx] = { ...currentReminders[idx], ...updated };
+      renderReminders(currentReminders, currentView?.kind === "smart");
+    }
+  } catch (err) {
+    if (errEl) errEl.textContent = String(err);
+  }
+}
+
+function bindEditSheet() {
+  document.querySelector("#edit-title")?.addEventListener("change", (e) => {
+    void applyEdit({ title: (e.target as HTMLInputElement).value });
+  });
+  document.querySelector("#edit-notes")?.addEventListener("change", (e) => {
+    void applyEdit({ desc: (e.target as HTMLTextAreaElement).value });
+  });
+  document.querySelector("#edit-priority")?.addEventListener("change", (e) => {
+    void applyEdit({ priority: Number((e.target as HTMLSelectElement).value) });
+  });
+  document.querySelector("#edit-flagged")?.addEventListener("change", (e) => {
+    void applyEdit({ flagged: (e.target as HTMLInputElement).checked });
+  });
+  document.querySelector("#edit-due-date")?.addEventListener("change", (e) => {
+    const v = (e.target as HTMLInputElement).value;
+    void applyEdit({ dueDate: v ? new Date(v).toISOString() : null });
+  });
+  document.querySelector("#edit-delete-btn")?.addEventListener("click", async () => {
+    if (!editingReminder) return;
+    const errEl = document.querySelector<HTMLElement>("#edit-error");
+    try {
+      await invoke("delete_reminder", { reminder: editingReminder });
+      editSheet.close();
+      await refreshCurrentView();
+    } catch (err) {
+      if (errEl) errEl.textContent = String(err);
+    }
+  });
+  document.querySelector("#edit-close-btn")?.addEventListener("click", () => editSheet.close());
+}
+
+function bindReminderInteractions() {
+  remindersListEl?.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+
+    const checkbox = target.closest<HTMLInputElement>(".reminder-checkbox");
+    if (checkbox) {
+      e.stopPropagation();
+      const id = checkbox.dataset.reminderId;
+      if (id) void toggleCompleted(id, checkbox.checked);
+      return;
+    }
+
+    const li = target.closest<HTMLElement>("li[data-reminder-id]");
+    if (li?.dataset.reminderId) openEditSheet(li.dataset.reminderId);
+  });
+}
+
+const createSheet = app.sheet.create({
+  el: document.querySelector("#create-sheet") as HTMLElement,
+  backdrop: true,
+});
+
+function bindCreateSheet() {
+  const addBtn = document.querySelector("#add-reminder-btn");
+  addBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (!currentView || currentView.kind !== "list") return;
+    const titleInput = document.querySelector<HTMLInputElement>("#create-title");
+    if (titleInput) titleInput.value = "";
+    const errEl = document.querySelector<HTMLElement>("#create-error");
+    if (errEl) errEl.textContent = "";
+    createSheet.open();
+  });
+
+  const form = document.querySelector<HTMLFormElement>("#create-form");
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!currentView || currentView.kind !== "list") return;
+    const title = document.querySelector<HTMLInputElement>("#create-title")?.value.trim() ?? "";
+    const errEl = document.querySelector<HTMLElement>("#create-error");
+    if (!title) return;
+    try {
+      await invoke("create_reminder", {
+        listId: currentView.id,
+        title,
+        notes: "",
+        priority: 0,
+        flagged: false,
+        dueDate: null,
+      });
+      createSheet.close();
+      await refreshCurrentView();
+    } catch (err) {
+      if (errEl) errEl.textContent = String(err);
+    }
+  });
+}
+
 async function onReady() {
   setStatus("");
   bindListSelection();
+  bindReminderInteractions();
+  bindEditSheet();
+  bindCreateSheet();
   if (listsErrorEl) listsErrorEl.textContent = "";
   try {
     const lists = await invoke<RemindersList[]>("list_lists");

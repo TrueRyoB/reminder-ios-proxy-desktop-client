@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use reminder_core::reminders::{Reminder, RemindersList};
 use reminder_core::{auth, bootstrap, reminders, session_store};
 use serde::Serialize;
@@ -111,14 +112,22 @@ pub async fn submit_two_factor_code(
     Ok(())
 }
 
+/// Every list/CRUD command needs the same "give me the active
+/// `RemindersService` or a clear error" step; the lock is dropped before
+/// returning so the (potentially slow) network call afterward doesn't hold
+/// it -- `Arc::clone` is cheap and `RemindersService` needs no lock itself
+/// (every method is `&self`).
+async fn reminders_service(state: &State<'_, AppState>) -> Result<Arc<reminders::RemindersService>, String> {
+    let guard = state.auth.lock().await;
+    guard
+        .reminders()
+        .cloned()
+        .ok_or_else(|| "ログインしていません".to_string())
+}
+
 #[tauri::command]
 pub async fn list_lists(state: State<'_, AppState>) -> Result<Vec<RemindersList>, String> {
-    let guard = state.auth.lock().await;
-    let reminders = guard
-        .reminders()
-        .ok_or_else(|| "ログインしていません".to_string())?
-        .clone();
-    drop(guard);
+    let reminders = reminders_service(&state).await?;
     reminders.lists().await.map_err(|e| e.to_string())
 }
 
@@ -128,16 +137,46 @@ pub async fn list_reminders(
     include_completed: bool,
     state: State<'_, AppState>,
 ) -> Result<Vec<Reminder>, String> {
-    let guard = state.auth.lock().await;
-    let reminders = guard
-        .reminders()
-        .ok_or_else(|| "ログインしていません".to_string())?
-        .clone();
-    drop(guard);
+    let reminders = reminders_service(&state).await?;
     reminders
         .list_reminders(&list_id, include_completed)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn create_reminder(
+    list_id: String,
+    title: String,
+    notes: String,
+    priority: i64,
+    flagged: bool,
+    due_date: Option<DateTime<Utc>>,
+    state: State<'_, AppState>,
+) -> Result<Reminder, String> {
+    let reminders = reminders_service(&state).await?;
+    reminders
+        .create(&list_id, &title, &notes, priority, flagged, due_date)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// A single unified path for every in-place edit (completed/title/notes/
+/// priority/flagged/due date/list move), matching `RemindersService::update`
+/// -- the frontend sends back the full `Reminder` it last fetched (carrying
+/// `recordChangeTag` for CloudKit's optimistic-concurrency check) with
+/// whichever fields it changed.
+#[tauri::command]
+pub async fn update_reminder(reminder: Reminder, state: State<'_, AppState>) -> Result<Reminder, String> {
+    let reminders = reminders_service(&state).await?;
+    reminders.update(&reminder).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_reminder(reminder: Reminder, state: State<'_, AppState>) -> Result<(), String> {
+    let reminders = reminders_service(&state).await?;
+    reminders.delete(&reminder).await.map_err(|e| e.to_string())
 }
 
 async fn make_ready(

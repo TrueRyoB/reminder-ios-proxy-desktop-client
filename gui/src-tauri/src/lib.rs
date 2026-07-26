@@ -15,6 +15,9 @@ pub fn run() {
             commands::submit_two_factor_code,
             commands::list_lists,
             commands::list_reminders,
+            commands::create_reminder,
+            commands::update_reminder,
+            commands::delete_reminder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

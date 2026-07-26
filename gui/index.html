@@ -62,6 +62,9 @@
                 <a href="#" class="link panel-open" data-panel="left">☰ リスト</a>
               </div>
               <div class="title" id="main-title">iCloud Reminders</div>
+              <div class="right">
+                <a href="#" id="add-reminder-btn" class="link">＋</a>
+              </div>
             </div>
           </div>
           <div class="page-content">
@@ -131,6 +134,88 @@
               <p id="two-factor-error" class="text-color-red text-align-center"></p>
               <div class="block">
                 <button type="submit" class="button button-fill button-large">確認</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div id="edit-sheet" class="sheet-modal">
+        <div class="sheet-modal-inner">
+          <div class="page-content">
+            <div class="block-title">編集</div>
+            <div class="list inset-ios">
+              <ul>
+                <li class="item-content item-input">
+                  <div class="item-inner">
+                    <div class="item-title item-label">タイトル</div>
+                    <div class="item-input-wrap"><input id="edit-title" type="text" /></div>
+                  </div>
+                </li>
+                <li class="item-content item-input">
+                  <div class="item-inner">
+                    <div class="item-title item-label">メモ</div>
+                    <div class="item-input-wrap"><textarea id="edit-notes" rows="2"></textarea></div>
+                  </div>
+                </li>
+                <li class="item-content item-input">
+                  <div class="item-inner">
+                    <div class="item-title item-label">優先度</div>
+                    <div class="item-input-wrap">
+                      <select id="edit-priority">
+                        <option value="0">なし</option>
+                        <option value="1">高</option>
+                        <option value="5">中</option>
+                        <option value="9">低</option>
+                      </select>
+                    </div>
+                  </div>
+                </li>
+                <li class="item-content item-input">
+                  <div class="item-inner">
+                    <div class="item-title item-label">期限</div>
+                    <div class="item-input-wrap"><input id="edit-due-date" type="datetime-local" /></div>
+                  </div>
+                </li>
+                <li class="item-content">
+                  <div class="item-inner">
+                    <div class="item-title">フラグ</div>
+                    <div class="item-after">
+                      <label class="toggle">
+                        <input type="checkbox" id="edit-flagged" />
+                        <span class="toggle-icon"></span>
+                      </label>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+            <p id="edit-error" class="text-color-red text-align-center"></p>
+            <div class="block">
+              <button type="button" id="edit-delete-btn" class="button button-large color-red">削除</button>
+              <button type="button" id="edit-close-btn" class="button button-large">閉じる</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="create-sheet" class="sheet-modal">
+        <div class="sheet-modal-inner">
+          <div class="page-content">
+            <div class="block-title">新規リマインダー</div>
+            <form id="create-form">
+              <div class="list inset-ios">
+                <ul>
+                  <li class="item-content item-input">
+                    <div class="item-inner">
+                      <div class="item-title item-label">タイトル</div>
+                      <div class="item-input-wrap"><input id="create-title" type="text" required /></div>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+              <p id="create-error" class="text-color-red text-align-center"></p>
+              <div class="block">
+                <button type="submit" class="button button-fill button-large">追加</button>
               </div>
             </form>
           </div>
