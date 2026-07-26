@@ -200,8 +200,12 @@ function flagToggleHtml(r: Reminder): string {
   return `<div class="${cls}" data-reminder-id="${escapeHtml(r.id)}" title="${label}">${icon}</div>`;
 }
 
-function renderReminders(reminders: Reminder[], showListTitle = false) {
+function renderReminders(reminders: Reminder[], showListTitle = false, emptyMessage = "リマインダーはありません。") {
   if (!remindersListEl) return;
+  if (reminders.length === 0) {
+    remindersListEl.innerHTML = emptyMessage ? `<li class="reminder-empty-state">${escapeHtml(emptyMessage)}</li>` : "";
+    return;
+  }
   remindersListEl.innerHTML = reminders
     .map((r) => {
       const listBadge =
@@ -299,7 +303,7 @@ async function selectList(listId: string, title: string) {
       includeCompleted: false,
     });
     currentReminders = reminders;
-    renderReminders(reminders);
+    renderReminders(reminders, false, "このリストにリマインダーはありません。");
     showRemindersList();
   } catch (err) {
     if (remindersErrorEl) remindersErrorEl.textContent = friendlyError(err);
@@ -342,7 +346,7 @@ async function selectSmartList(kind: SmartListKind, title: string) {
         filtered = all;
     }
     currentReminders = filtered;
-    renderReminders(filtered, true);
+    renderReminders(filtered, true, SMART_LIST_EMPTY_MESSAGES[kind]);
     showRemindersList();
   } catch (err) {
     if (remindersErrorEl) remindersErrorEl.textContent = friendlyError(err);
@@ -396,7 +400,9 @@ async function selectDashboard() {
     }
 
     currentReminders = queue;
-    renderReminders(queue, true);
+    // No separate empty-state row here -- the summary line above already
+    // says "nothing to work on" when the queue is empty.
+    renderReminders(queue, true, "");
     if (dashboardSummaryEl) dashboardSummaryEl.style.display = "";
     if (remindersContainerEl) remindersContainerEl.style.display = "";
     if (addReminderBtn) addReminderBtn.style.display = "";
@@ -418,6 +424,13 @@ const SMART_LIST_TITLES: Record<SmartListKind, string> = {
   scheduled: "予定",
   flagged: "フラグ付き",
   all: "すべて",
+};
+
+const SMART_LIST_EMPTY_MESSAGES: Record<SmartListKind, string> = {
+  today: "今日期限のリマインダーはありません。",
+  scheduled: "期限が設定されたリマインダーはありません。",
+  flagged: "着手中のリマインダーはありません。",
+  all: "リマインダーはありません。",
 };
 
 function bindListSelection() {

@@ -73,15 +73,17 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Adding a tray icon appears to make the main window start
-            // hidden by default on Windows (observed: the window exists
-            // with the configured size but `IsWindowVisible` is false until
-            // shown) -- show it explicitly rather than relying on
-            // whatever default behavior a tray-resident app gets.
-            if let Some(window) = app.get_webview_window("main") {
-                window.show()?;
-                window.set_focus()?;
-            }
+            // NOTE: previously this called window.show()/set_focus() here
+            // explicitly, because adding a tray icon made the main window
+            // start hidden by default. Since adding tauri-plugin-window-state
+            // (which restores position/size *and* shows the window itself
+            // as part of that restore -- see its docs), calling show() here
+            // too raced with its restore and left the window positioned at
+            // whatever transient/staging spot it was created at instead of
+            // the correct restored position (observed empirically: window
+            // ended up off-screen at (-25600, -25600) while the persisted
+            // state file itself had the correct, valid coordinates).
+            // window-state's restore-then-show now handles this instead.
             Ok(())
         })
         .on_window_event(|window, event| {
