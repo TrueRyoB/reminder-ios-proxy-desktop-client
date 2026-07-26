@@ -139,6 +139,17 @@ function dueDateHtml(r: Reminder): string {
   return `<div class="${cls}">${escapeHtml(due.toLocaleString("ja-JP"))}</div>`;
 }
 
+// The flag is repurposed in this app as an explicit "I've started this"
+// signal (a user decision -- see handan/0023): tapping it toggles flagged
+// directly from the row, no need to open the edit sheet. Unflagged shows a
+// faint outline glyph (an invitation to tap), flagged shows a solid one.
+function flagToggleHtml(r: Reminder): string {
+  const icon = r.flagged ? "🚩" : "⚑";
+  const cls = r.flagged ? "reminder-flag reminder-flag-active" : "reminder-flag reminder-flag-inactive";
+  const label = r.flagged ? "着手中(タップで解除)" : "タップで着手中にする";
+  return `<div class="${cls}" data-reminder-id="${escapeHtml(r.id)}" title="${label}">${icon}</div>`;
+}
+
 function renderReminders(reminders: Reminder[], showListTitle = false) {
   if (!remindersListEl) return;
   remindersListEl.innerHTML = reminders
@@ -154,7 +165,7 @@ function renderReminders(reminders: Reminder[], showListTitle = false) {
             <div class="item-inner">
               <div class="reminder-title-row">
                 <div class="item-title">${escapeHtml(r.title)}</div>
-                ${r.flagged ? '<div class="reminder-flag">🚩</div>' : ""}
+                ${flagToggleHtml(r)}
               </div>
               ${dueDateHtml(r)}
               ${r.desc ? `<div class="item-text">${escapeHtml(r.desc)}</div>` : ""}
@@ -203,7 +214,7 @@ let currentReminders: (Reminder | AggregatedReminder)[] = [];
 
 const editModeBtn = document.querySelector<HTMLElement>("#edit-mode-btn");
 const addReminderBtn = document.querySelector<HTMLElement>("#add-reminder-btn");
-const dashboardViewEl = document.querySelector<HTMLElement>("#dashboard-view");
+const dashboardSummaryEl = document.querySelector<HTMLElement>("#dashboard-summary");
 let editModeActive = false;
 
 // Reordering is only meaningful for a single concrete list -- a smart list
@@ -221,7 +232,7 @@ function exitEditMode() {
 /// along with the toolbar actions that only make sense for a concrete list
 /// (create/reorder -- the dashboard is read-only, aggregate-only).
 function showRemindersList() {
-  if (dashboardViewEl) dashboardViewEl.style.display = "none";
+  if (dashboardSummaryEl) dashboardSummaryEl.style.display = "none";
   if (remindersContainerEl) remindersContainerEl.style.display = "";
   if (addReminderBtn) addReminderBtn.style.display = "";
 }
@@ -289,11 +300,12 @@ async function selectSmartList(kind: SmartListKind, title: string) {
   app.panel.close("left");
 }
 
-/// GUI-11's "new usage experience": an at-a-glance summary across every
-/// list, distinct from the iOS-parity list/smart-list views. Reuses the
-/// same cross-list fetch as the smart lists rather than a dedicated
-/// backend endpoint -- the counts are just different filters over the
-/// same data.
+/// GUI-11's "new usage experience", redefined per user feedback (handan/0023):
+/// not an at-a-glance count summary, but a single prioritized, actionable
+/// queue -- work from the top down and it's handled. Priority order:
+/// overdue (longest-neglected first) -> in-progress/flagged -> due today
+/// -> everything else marked high priority. A reminder appears exactly
+/// once, in the highest-priority bucket it qualifies for.
 async function selectDashboard() {
   currentView = { kind: "dashboard" };
   exitEditMode();
@@ -305,21 +317,39 @@ async function selectDashboard() {
     const all = await fetchAllReminders();
     const cutoff = endOfToday();
     const now = Date.now();
-    const todayCount = all.filter((r) => r.dueDate && new Date(r.dueDate).getTime() <= cutoff.getTime()).length;
-    const overdueCount = all.filter((r) => r.dueDate && new Date(r.dueDate).getTime() < now).length;
-    const flaggedCount = all.filter((r) => r.flagged).length;
 
-    const setCount = (id: string, value: number) => {
-      const el = document.querySelector(`#${id}`);
-      if (el) el.textContent = String(value);
+    const seen = new Set<string>();
+    const byDueAsc = (a: AggregatedReminder, b: AggregatedReminder) =>
+      new Date(a.dueDate as string).getTime() - new Date(b.dueDate as string).getTime();
+    const bucket = (
+      pred: (r: AggregatedReminder) => boolean,
+      sort: (a: AggregatedReminder, b: AggregatedReminder) => number,
+    ): AggregatedReminder[] => {
+      const items = all.filter((r) => pred(r) && !seen.has(r.id)).sort(sort);
+      items.forEach((r) => seen.add(r.id));
+      return items;
     };
-    setCount("dashboard-today-count", todayCount);
-    setCount("dashboard-overdue-count", overdueCount);
-    setCount("dashboard-flagged-count", flaggedCount);
-    setCount("dashboard-all-count", all.length);
 
-    if (remindersContainerEl) remindersContainerEl.style.display = "none";
-    if (dashboardViewEl) dashboardViewEl.style.display = "";
+    const overdue = bucket((r) => r.dueDate !== null && new Date(r.dueDate).getTime() < now, byDueAsc);
+    const inProgress = bucket((r) => r.flagged, byDueAsc);
+    const dueToday = bucket((r) => r.dueDate !== null && new Date(r.dueDate).getTime() <= cutoff.getTime(), byDueAsc);
+    const highPriority = bucket((r) => r.priority === 1, byDueAsc);
+    const queue = [...overdue, ...inProgress, ...dueToday, ...highPriority];
+
+    if (dashboardSummaryEl) {
+      dashboardSummaryEl.textContent =
+        queue.length === 0
+          ? "今取り組むべきことはありません。"
+          : `上から順に片付けましょう — 期限切れ ${overdue.length}件 / 着手中 ${inProgress.length}件 / ` +
+            `今日 ${dueToday.length}件 / 優先度高 ${highPriority.length}件`;
+      dashboardSummaryEl.style.display = "";
+    }
+
+    currentReminders = queue;
+    renderReminders(queue, true);
+    if (dashboardSummaryEl) dashboardSummaryEl.style.display = "";
+    if (remindersContainerEl) remindersContainerEl.style.display = "";
+    if (addReminderBtn) addReminderBtn.style.display = "";
   } catch (err) {
     if (remindersErrorEl) remindersErrorEl.textContent = String(err);
   }
@@ -369,12 +399,35 @@ function bindListSelection() {
   });
 }
 
+// Completing a task ends its "in progress" status (see flagToggleHtml) and
+// -- per the task-lifecycle design agreed with the user -- immediately
+// offers to capture whatever comes next, rather than letting momentum
+// drop once a task is checked off.
 async function toggleCompleted(id: string, completed: boolean) {
   const r = currentReminders.find((x) => x.id === id);
   if (!r) return;
   try {
-    await invoke<Reminder>("update_reminder", { reminder: { ...r, completed } });
+    const patch: Partial<Reminder> = completed && r.flagged ? { completed, flagged: false } : { completed };
+    await invoke<Reminder>("update_reminder", { reminder: { ...r, ...patch } });
     await refreshCurrentView();
+    if (completed) promptNextTask(r);
+  } catch (err) {
+    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+  }
+}
+
+// The flag is this app's explicit "I've started this" signal -- tapping it
+// toggles that state directly from the row, no need to open the edit sheet.
+async function toggleFlag(id: string) {
+  const r = currentReminders.find((x) => x.id === id);
+  if (!r) return;
+  try {
+    const updated = await invoke<Reminder>("update_reminder", { reminder: { ...r, flagged: !r.flagged } });
+    const idx = currentReminders.findIndex((x) => x.id === id);
+    if (idx >= 0) {
+      currentReminders[idx] = { ...currentReminders[idx], ...updated };
+      renderReminders(currentReminders, currentView?.kind !== "list");
+    }
   } catch (err) {
     if (remindersErrorEl) remindersErrorEl.textContent = String(err);
   }
@@ -467,16 +520,6 @@ function bindEditSheet() {
   document.querySelector("#edit-close-btn")?.addEventListener("click", () => editSheet.close());
 }
 
-function bindDashboard() {
-  dashboardViewEl?.addEventListener("click", (e) => {
-    const card = (e.target as HTMLElement).closest<HTMLElement>(".dashboard-card");
-    if (!card) return;
-    e.preventDefault();
-    const kind = card.dataset.smartId as SmartListKind | undefined;
-    if (kind) void selectSmartList(kind, SMART_LIST_TITLES[kind]);
-  });
-}
-
 function bindReminderInteractions() {
   remindersListEl?.addEventListener("click", (e) => {
     if (editModeActive) return; // dragging/deleting, not tap-to-edit, while reordering
@@ -487,6 +530,14 @@ function bindReminderInteractions() {
       e.stopPropagation();
       const id = checkbox.dataset.reminderId;
       if (id) void toggleCompleted(id, checkbox.checked);
+      return;
+    }
+
+    const flag = target.closest<HTMLElement>(".reminder-flag");
+    if (flag) {
+      e.stopPropagation();
+      const id = flag.dataset.reminderId;
+      if (id) void toggleFlag(id);
       return;
     }
 
@@ -546,28 +597,46 @@ const createSheet = app.sheet.create({
 // currently open (dashboard, a smart list, or a concrete list) -- it used
 // to silently no-op unless a concrete list was selected, which broke
 // entirely once the dashboard became the default landing view (GUI-11).
-function populateCreateListPicker() {
+function populateCreateListPicker(preferredListId?: string) {
   const select = document.querySelector<HTMLSelectElement>("#create-list-id");
   if (!select) return;
-  const preselectId = currentView?.kind === "list" ? currentView.id : undefined;
+  const preselectId = preferredListId ?? (currentView?.kind === "list" ? currentView.id : undefined);
   select.innerHTML = cachedLists
     .map((l) => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.title)}</option>`)
     .join("");
   if (preselectId) select.value = preselectId;
 }
 
+const CREATE_SHEET_DEFAULT_TITLE = "新規リマインダー";
+
+function openCreateSheet(heading: string, preferredListId?: string) {
+  if (cachedLists.length === 0) return;
+  const headingEl = document.querySelector<HTMLElement>("#create-sheet-title");
+  if (headingEl) headingEl.textContent = heading;
+  const titleInput = document.querySelector<HTMLInputElement>("#create-title");
+  if (titleInput) titleInput.value = "";
+  populateCreateListPicker(preferredListId);
+  const errEl = document.querySelector<HTMLElement>("#create-error");
+  if (errEl) errEl.textContent = "";
+  createSheet.open();
+}
+
+// Per the task-lifecycle design agreed with the user (handan/0023): a
+// completed task should immediately invite capturing whatever comes next,
+// rather than just disappearing -- reuses the same create Sheet, scoped to
+// the list the just-completed reminder belonged to.
+function promptNextTask(completed: Reminder | AggregatedReminder) {
+  openCreateSheet(`「${completed.title}」を完了しました。次のタスクを追加しますか?`, completed.listId);
+}
+
 function bindCreateSheet() {
   const addBtn = document.querySelector("#add-reminder-btn");
   addBtn?.addEventListener("click", (e) => {
     e.preventDefault();
-    if (cachedLists.length === 0) return;
-    const titleInput = document.querySelector<HTMLInputElement>("#create-title");
-    if (titleInput) titleInput.value = "";
-    populateCreateListPicker();
-    const errEl = document.querySelector<HTMLElement>("#create-error");
-    if (errEl) errEl.textContent = "";
-    createSheet.open();
+    openCreateSheet(CREATE_SHEET_DEFAULT_TITLE);
   });
+
+  document.querySelector("#create-skip-btn")?.addEventListener("click", () => createSheet.close());
 
   const form = document.querySelector<HTMLFormElement>("#create-form");
   form?.addEventListener("submit", async (e) => {
@@ -596,7 +665,6 @@ function bindCreateSheet() {
 async function onReady() {
   setStatus("");
   bindListSelection();
-  bindDashboard();
   bindReminderInteractions();
   bindEditSheet();
   bindCreateSheet();
