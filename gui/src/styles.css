@@ -138,3 +138,37 @@
   right: 0;
   font-size: 13px;
 }
+
+/* GUI-11's "new usage experience": an at-a-glance cross-list summary,
+   distinct from the iOS-parity list/smart-list views above it. Each card's
+   accent color matches its corresponding smart list's badge color. */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 16px;
+}
+.dashboard-card {
+  display: block;
+  background: var(--f7-list-bg-color, #fff);
+  border-radius: 14px;
+  border-left: 5px solid var(--card-color, #8e8e93);
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  text-decoration: none;
+}
+:root.dark .dashboard-card {
+  background: #1c1c1e;
+  box-shadow: none;
+}
+.dashboard-card-count {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--card-color, inherit);
+  line-height: 1.1;
+}
+.dashboard-card-label {
+  font-size: 14px;
+  color: var(--reminder-subtitle);
+  margin-top: 4px;
+}

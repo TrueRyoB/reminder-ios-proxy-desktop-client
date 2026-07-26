@@ -194,11 +194,16 @@ function endOfToday(): Date {
   return d;
 }
 
-type ViewState = { kind: "list"; id: string; title: string } | { kind: "smart"; smart: SmartListKind; title: string };
+type ViewState =
+  | { kind: "list"; id: string; title: string }
+  | { kind: "smart"; smart: SmartListKind; title: string }
+  | { kind: "dashboard" };
 let currentView: ViewState | null = null;
 let currentReminders: (Reminder | AggregatedReminder)[] = [];
 
 const editModeBtn = document.querySelector<HTMLElement>("#edit-mode-btn");
+const addReminderBtn = document.querySelector<HTMLElement>("#add-reminder-btn");
+const dashboardViewEl = document.querySelector<HTMLElement>("#dashboard-view");
 let editModeActive = false;
 
 // Reordering is only meaningful for a single concrete list -- a smart list
@@ -209,6 +214,16 @@ function exitEditMode() {
   editModeActive = false;
   if (remindersContainerEl) app.sortable.disable(remindersContainerEl);
   if (editModeBtn) editModeBtn.textContent = "編集";
+}
+
+/// Both the reminder-list view and the dashboard share one page-content
+/// area; whichever is being entered shows itself and hides the other,
+/// along with the toolbar actions that only make sense for a concrete list
+/// (create/reorder -- the dashboard is read-only, aggregate-only).
+function showRemindersList() {
+  if (dashboardViewEl) dashboardViewEl.style.display = "none";
+  if (remindersContainerEl) remindersContainerEl.style.display = "";
+  if (addReminderBtn) addReminderBtn.style.display = "";
 }
 
 async function selectList(listId: string, title: string) {
@@ -224,7 +239,7 @@ async function selectList(listId: string, title: string) {
     });
     currentReminders = reminders;
     renderReminders(reminders);
-    if (remindersContainerEl) remindersContainerEl.style.display = "";
+    showRemindersList();
   } catch (err) {
     if (remindersErrorEl) remindersErrorEl.textContent = String(err);
   }
@@ -267,7 +282,44 @@ async function selectSmartList(kind: SmartListKind, title: string) {
     }
     currentReminders = filtered;
     renderReminders(filtered, true);
-    if (remindersContainerEl) remindersContainerEl.style.display = "";
+    showRemindersList();
+  } catch (err) {
+    if (remindersErrorEl) remindersErrorEl.textContent = String(err);
+  }
+  app.panel.close("left");
+}
+
+/// GUI-11's "new usage experience": an at-a-glance summary across every
+/// list, distinct from the iOS-parity list/smart-list views. Reuses the
+/// same cross-list fetch as the smart lists rather than a dedicated
+/// backend endpoint -- the counts are just different filters over the
+/// same data.
+async function selectDashboard() {
+  currentView = { kind: "dashboard" };
+  exitEditMode();
+  if (editModeBtn) editModeBtn.style.display = "none";
+  if (addReminderBtn) addReminderBtn.style.display = "none";
+  if (mainTitleEl) mainTitleEl.textContent = "ダッシュボード";
+  if (remindersErrorEl) remindersErrorEl.textContent = "";
+  try {
+    const all = await fetchAllReminders();
+    const cutoff = endOfToday();
+    const now = Date.now();
+    const todayCount = all.filter((r) => r.dueDate && new Date(r.dueDate).getTime() <= cutoff.getTime()).length;
+    const overdueCount = all.filter((r) => r.dueDate && new Date(r.dueDate).getTime() < now).length;
+    const flaggedCount = all.filter((r) => r.flagged).length;
+
+    const setCount = (id: string, value: number) => {
+      const el = document.querySelector(`#${id}`);
+      if (el) el.textContent = String(value);
+    };
+    setCount("dashboard-today-count", todayCount);
+    setCount("dashboard-overdue-count", overdueCount);
+    setCount("dashboard-flagged-count", flaggedCount);
+    setCount("dashboard-all-count", all.length);
+
+    if (remindersContainerEl) remindersContainerEl.style.display = "none";
+    if (dashboardViewEl) dashboardViewEl.style.display = "";
   } catch (err) {
     if (remindersErrorEl) remindersErrorEl.textContent = String(err);
   }
@@ -277,7 +329,8 @@ async function selectSmartList(kind: SmartListKind, title: string) {
 async function refreshCurrentView() {
   if (!currentView) return;
   if (currentView.kind === "list") await selectList(currentView.id, currentView.title);
-  else await selectSmartList(currentView.smart, currentView.title);
+  else if (currentView.kind === "smart") await selectSmartList(currentView.smart, currentView.title);
+  else await selectDashboard();
 }
 
 const SMART_LIST_TITLES: Record<SmartListKind, string> = {
@@ -291,6 +344,12 @@ function bindListSelection() {
   const panelContent = document.querySelector<HTMLElement>("#lists-panel-content");
   panelContent?.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
+
+    if (target.closest("#dashboard-nav-item")) {
+      e.preventDefault();
+      void selectDashboard();
+      return;
+    }
 
     const smartLink = target.closest<HTMLElement>(".smart-item");
     if (smartLink) {
@@ -408,6 +467,16 @@ function bindEditSheet() {
   document.querySelector("#edit-close-btn")?.addEventListener("click", () => editSheet.close());
 }
 
+function bindDashboard() {
+  dashboardViewEl?.addEventListener("click", (e) => {
+    const card = (e.target as HTMLElement).closest<HTMLElement>(".dashboard-card");
+    if (!card) return;
+    e.preventDefault();
+    const kind = card.dataset.smartId as SmartListKind | undefined;
+    if (kind) void selectSmartList(kind, SMART_LIST_TITLES[kind]);
+  });
+}
+
 function bindReminderInteractions() {
   remindersListEl?.addEventListener("click", (e) => {
     if (editModeActive) return; // dragging/deleting, not tap-to-edit, while reordering
@@ -512,6 +581,7 @@ function bindCreateSheet() {
 async function onReady() {
   setStatus("");
   bindListSelection();
+  bindDashboard();
   bindReminderInteractions();
   bindEditSheet();
   bindCreateSheet();
@@ -521,9 +591,9 @@ async function onReady() {
     const lists = await invoke<RemindersList[]>("list_lists");
     cachedLists = lists;
     renderLists(lists);
-    if (lists.length > 0) {
-      await selectList(lists[0].id, lists[0].title);
-    }
+    // The dashboard (GUI-11's "new usage experience") is the default
+    // landing view now, rather than auto-selecting the first list.
+    await selectDashboard();
   } catch (err) {
     if (listsErrorEl) listsErrorEl.textContent = String(err);
   }

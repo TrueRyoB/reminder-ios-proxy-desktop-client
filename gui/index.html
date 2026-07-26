@@ -18,6 +18,16 @@
             </div>
             <div class="page-content" id="lists-panel-content">
               <div id="lists-error" class="block text-color-red"></div>
+              <div class="list simple-list media-list">
+                <ul>
+                  <li>
+                    <a href="#" class="item-link item-content" id="dashboard-nav-item">
+                      <div class="item-media"><div class="list-badge" style="background-color: #34c759">🏠</div></div>
+                      <div class="item-inner"><div class="item-title">ダッシュボード</div></div>
+                    </a>
+                  </li>
+                </ul>
+              </div>
               <div class="block-title">スマートリスト</div>
               <div class="list simple-list media-list">
                 <ul>
@@ -77,6 +87,24 @@
               <p>読み込み中…</p>
             </div>
             <div id="reminders-error" class="block text-color-red"></div>
+            <div id="dashboard-view" class="dashboard-grid" style="display: none">
+              <a href="#" class="dashboard-card" data-smart-id="today" style="--card-color: #007aff">
+                <div class="dashboard-card-count" id="dashboard-today-count">-</div>
+                <div class="dashboard-card-label">今日</div>
+              </a>
+              <a href="#" class="dashboard-card" data-smart-id="today" style="--card-color: #ff3b30">
+                <div class="dashboard-card-count" id="dashboard-overdue-count">-</div>
+                <div class="dashboard-card-label">期限切れ</div>
+              </a>
+              <a href="#" class="dashboard-card" data-smart-id="flagged" style="--card-color: #ff9500">
+                <div class="dashboard-card-count" id="dashboard-flagged-count">-</div>
+                <div class="dashboard-card-label">フラグ付き</div>
+              </a>
+              <a href="#" class="dashboard-card" data-smart-id="all" style="--card-color: #8e8e93">
+                <div class="dashboard-card-count" id="dashboard-all-count">-</div>
+                <div class="dashboard-card-label">すべて</div>
+              </a>
+            </div>
             <div class="list media-list" id="reminders-list" style="display: none">
               <ul></ul>
             </div>
