@@ -13,6 +13,8 @@ pub fn run() {
             commands::try_resume,
             commands::login,
             commands::submit_two_factor_code,
+            commands::list_lists,
+            commands::list_reminders,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

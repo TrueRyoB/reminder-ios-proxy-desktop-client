@@ -7,17 +7,44 @@
   </head>
   <body>
     <div id="app">
+      <div class="panel panel-left panel-cover">
+        <div class="view">
+          <div class="page">
+            <div class="navbar">
+              <div class="navbar-bg"></div>
+              <div class="navbar-inner">
+                <div class="title">リスト</div>
+              </div>
+            </div>
+            <div class="page-content">
+              <div id="lists-error" class="block text-color-red"></div>
+              <div class="list simple-list media-list" id="lists-list">
+                <ul></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel-backdrop"></div>
+
       <div class="view view-main view-init safe-areas">
         <div class="page">
           <div class="navbar">
             <div class="navbar-bg"></div>
             <div class="navbar-inner">
-              <div class="title">iCloud Reminders</div>
+              <div class="left">
+                <a href="#" class="link panel-open" data-panel="left">☰ リスト</a>
+              </div>
+              <div class="title" id="main-title">iCloud Reminders</div>
             </div>
           </div>
           <div class="page-content">
             <div id="status-block" class="block block-strong-ios inset-ios text-align-center">
               <p>読み込み中…</p>
+            </div>
+            <div id="reminders-error" class="block text-color-red"></div>
+            <div class="list media-list" id="reminders-list" style="display: none">
+              <ul></ul>
             </div>
           </div>
         </div>

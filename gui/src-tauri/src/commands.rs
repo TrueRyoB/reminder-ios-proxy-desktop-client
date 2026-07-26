@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use reminder_core::reminders::{Reminder, RemindersList};
 use reminder_core::{auth, bootstrap, reminders, session_store};
 use serde::Serialize;
 use tauri::State;
@@ -108,6 +109,35 @@ pub async fn submit_two_factor_code(
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn list_lists(state: State<'_, AppState>) -> Result<Vec<RemindersList>, String> {
+    let guard = state.auth.lock().await;
+    let reminders = guard
+        .reminders()
+        .ok_or_else(|| "ログインしていません".to_string())?
+        .clone();
+    drop(guard);
+    reminders.lists().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_reminders(
+    list_id: String,
+    include_completed: bool,
+    state: State<'_, AppState>,
+) -> Result<Vec<Reminder>, String> {
+    let guard = state.auth.lock().await;
+    let reminders = guard
+        .reminders()
+        .ok_or_else(|| "ログインしていません".to_string())?
+        .clone();
+    drop(guard);
+    reminders
+        .list_reminders(&list_id, include_completed)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 async fn make_ready(

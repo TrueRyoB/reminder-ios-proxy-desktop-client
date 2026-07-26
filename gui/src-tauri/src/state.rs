@@ -18,10 +18,19 @@ pub enum AuthState {
         client: Box<AppleAuthClient>,
         password: String,
     },
-    Ready {
-        #[allow(dead_code)] // consumed starting with the list-reading milestone (GUI-4)
-        reminders: Arc<RemindersService>,
-    },
+    Ready { reminders: Arc<RemindersService> },
+}
+
+impl AuthState {
+    /// Borrow the `RemindersService` if a session is fully established.
+    /// Every list/CRUD command needs this and should surface a clear error
+    /// (rather than panicking) if called before login completes.
+    pub fn reminders(&self) -> Option<&Arc<RemindersService>> {
+        match self {
+            AuthState::Ready { reminders } => Some(reminders),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Default)]

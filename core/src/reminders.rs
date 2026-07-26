@@ -5,6 +5,7 @@
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, TimeZone, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -17,7 +18,8 @@ use crate::crdt::{decode_crdt_document, encode_crdt_document};
 const ZONE_NAME: &str = "Reminders";
 const ZONE_TYPE: &str = "REGULAR_CUSTOM_ZONE";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemindersList {
     pub id: String,
     pub title: String,
@@ -28,7 +30,8 @@ pub struct RemindersList {
     pub record_change_tag: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Reminder {
     pub id: String,
     pub list_id: String,
