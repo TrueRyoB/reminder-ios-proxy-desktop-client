@@ -25,6 +25,7 @@ thiserror = "1"
 chrono = { version = "0.4", features = ["serde"] }
 directories = "5"
 tracing = "0.1"
+tokio = { version = "1", features = ["time"] }
 prost = "0.13"
 flate2 = "1"
 
