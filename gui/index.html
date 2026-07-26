@@ -87,6 +87,17 @@
               <p>読み込み中…</p>
             </div>
             <div id="reminders-error" class="block text-color-red"></div>
+            <div class="list inset-ios" id="search-box-container" style="display: none">
+              <ul>
+                <li class="item-content item-input">
+                  <div class="item-inner">
+                    <div class="item-input-wrap">
+                      <input id="search-input" type="search" placeholder="検索" />
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
             <div id="dashboard-summary" class="block block-strong-ios inset-ios" style="display: none"></div>
             <div class="list media-list" id="reminders-list" style="display: none">
               <ul></ul>
@@ -194,12 +205,31 @@
                 </li>
                 <li class="item-content">
                   <div class="item-inner">
+                    <div class="item-title">終日</div>
+                    <div class="item-after">
+                      <label class="toggle">
+                        <input type="checkbox" id="edit-all-day" />
+                        <span class="toggle-icon"></span>
+                      </label>
+                    </div>
+                  </div>
+                </li>
+                <li class="item-content">
+                  <div class="item-inner">
                     <div class="item-title">フラグ</div>
                     <div class="item-after">
                       <label class="toggle">
                         <input type="checkbox" id="edit-flagged" />
                         <span class="toggle-icon"></span>
                       </label>
+                    </div>
+                  </div>
+                </li>
+                <li class="item-content item-input">
+                  <div class="item-inner">
+                    <div class="item-title item-label">リスト</div>
+                    <div class="item-input-wrap">
+                      <select id="edit-list-id"></select>
                     </div>
                   </div>
                 </li>

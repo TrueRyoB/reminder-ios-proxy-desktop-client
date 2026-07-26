@@ -269,7 +269,31 @@ let currentReminders: (Reminder | AggregatedReminder)[] = [];
 const editModeBtn = document.querySelector<HTMLElement>("#edit-mode-btn");
 const addReminderBtn = document.querySelector<HTMLElement>("#add-reminder-btn");
 const dashboardSummaryEl = document.querySelector<HTMLElement>("#dashboard-summary");
+const searchBoxContainerEl = document.querySelector<HTMLElement>("#search-box-container");
+const searchInputEl = document.querySelector<HTMLInputElement>("#search-input");
 let editModeActive = false;
+
+// Client-side only (no dedicated backend search endpoint) -- filters
+// whatever's already loaded in `currentReminders` by title/notes substring.
+// Never mutates `currentReminders` itself, so row taps (which look items up
+// by id in that array) keep working correctly against a filtered view.
+function applySearchFilter() {
+  const query = (searchInputEl?.value ?? "").trim().toLowerCase();
+  const showListTitle = currentView?.kind !== "list";
+  if (!query) {
+    renderReminders(currentReminders, showListTitle);
+    return;
+  }
+  const filtered = currentReminders.filter(
+    (r) => r.title.toLowerCase().includes(query) || r.desc.toLowerCase().includes(query),
+  );
+  renderReminders(filtered, showListTitle, "検索結果はありません。");
+}
+
+function resetSearch() {
+  if (searchInputEl) searchInputEl.value = "";
+  if (searchBoxContainerEl) searchBoxContainerEl.style.display = "";
+}
 
 // Reordering is only meaningful for a single concrete list -- a smart list
 // is a client-side aggregate across many lists' own independent orders, so
@@ -303,6 +327,7 @@ async function selectList(listId: string, title: string) {
       includeCompleted: false,
     });
     currentReminders = reminders;
+    resetSearch();
     renderReminders(reminders, false, "このリストにリマインダーはありません。");
     showRemindersList();
   } catch (err) {
@@ -346,6 +371,7 @@ async function selectSmartList(kind: SmartListKind, title: string) {
         filtered = all;
     }
     currentReminders = filtered;
+    resetSearch();
     renderReminders(filtered, true, SMART_LIST_EMPTY_MESSAGES[kind]);
     showRemindersList();
   } catch (err) {
@@ -400,6 +426,7 @@ async function selectDashboard() {
     }
 
     currentReminders = queue;
+    resetSearch();
     // No separate empty-state row here -- the summary line above already
     // says "nothing to work on" when the queue is empty.
     renderReminders(queue, true, "");
@@ -517,14 +544,23 @@ function openEditSheet(id: string) {
   const notesInput = document.querySelector<HTMLTextAreaElement>("#edit-notes");
   const priorityInput = document.querySelector<HTMLSelectElement>("#edit-priority");
   const flaggedInput = document.querySelector<HTMLInputElement>("#edit-flagged");
+  const allDayInput = document.querySelector<HTMLInputElement>("#edit-all-day");
   const dueInput = document.querySelector<HTMLInputElement>("#edit-due-date");
+  const listSelect = document.querySelector<HTMLSelectElement>("#edit-list-id");
   const errEl = document.querySelector<HTMLElement>("#edit-error");
 
   if (titleInput) titleInput.value = r.title;
   if (notesInput) notesInput.value = r.desc;
   if (priorityInput) priorityInput.value = String(r.priority);
   if (flaggedInput) flaggedInput.checked = r.flagged;
+  if (allDayInput) allDayInput.checked = r.allDay;
   if (dueInput) dueInput.value = r.dueDate ? toLocalDatetimeInputValue(new Date(r.dueDate)) : "";
+  if (listSelect) {
+    listSelect.innerHTML = cachedLists
+      .map((l) => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.title)}</option>`)
+      .join("");
+    listSelect.value = r.listId;
+  }
   if (errEl) errEl.textContent = "";
 
   editSheet.open();
@@ -568,6 +604,20 @@ function bindEditSheet() {
   document.querySelector("#edit-due-date")?.addEventListener("change", (e) => {
     const v = (e.target as HTMLInputElement).value;
     void applyEdit({ dueDate: v ? new Date(v).toISOString() : null });
+  });
+  document.querySelector("#edit-all-day")?.addEventListener("change", (e) => {
+    void applyEdit({ allDay: (e.target as HTMLInputElement).checked });
+  });
+  document.querySelector("#edit-list-id")?.addEventListener("change", async (e) => {
+    const newListId = (e.target as HTMLSelectElement).value;
+    await applyEdit({ listId: newListId });
+    // A moved reminder no longer belongs in the currently-viewed concrete
+    // list -- refresh so it disappears from view immediately rather than
+    // lingering until the next manual reselect.
+    if (currentView?.kind === "list" && currentView.id !== newListId) {
+      editSheet.close();
+      await refreshCurrentView();
+    }
   });
   document.querySelector("#edit-delete-btn")?.addEventListener("click", () => {
     if (!editingReminder) return;
@@ -740,6 +790,7 @@ async function onReady() {
   bindEditSheet();
   bindCreateSheet();
   bindEditModeToggle();
+  searchInputEl?.addEventListener("input", applySearchFilter);
   if (listsErrorEl) listsErrorEl.textContent = "";
   try {
     const lists = await invoke<RemindersList[]>("list_lists");
