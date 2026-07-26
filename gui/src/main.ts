@@ -298,7 +298,7 @@ async function selectDashboard() {
   currentView = { kind: "dashboard" };
   exitEditMode();
   if (editModeBtn) editModeBtn.style.display = "none";
-  if (addReminderBtn) addReminderBtn.style.display = "none";
+  if (addReminderBtn) addReminderBtn.style.display = "";
   if (mainTitleEl) mainTitleEl.textContent = "ダッシュボード";
   if (remindersErrorEl) remindersErrorEl.textContent = "";
   try {
@@ -542,13 +542,28 @@ const createSheet = app.sheet.create({
   backdrop: true,
 });
 
+// Creating a reminder needs a target list regardless of which view is
+// currently open (dashboard, a smart list, or a concrete list) -- it used
+// to silently no-op unless a concrete list was selected, which broke
+// entirely once the dashboard became the default landing view (GUI-11).
+function populateCreateListPicker() {
+  const select = document.querySelector<HTMLSelectElement>("#create-list-id");
+  if (!select) return;
+  const preselectId = currentView?.kind === "list" ? currentView.id : undefined;
+  select.innerHTML = cachedLists
+    .map((l) => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.title)}</option>`)
+    .join("");
+  if (preselectId) select.value = preselectId;
+}
+
 function bindCreateSheet() {
   const addBtn = document.querySelector("#add-reminder-btn");
   addBtn?.addEventListener("click", (e) => {
     e.preventDefault();
-    if (!currentView || currentView.kind !== "list") return;
+    if (cachedLists.length === 0) return;
     const titleInput = document.querySelector<HTMLInputElement>("#create-title");
     if (titleInput) titleInput.value = "";
+    populateCreateListPicker();
     const errEl = document.querySelector<HTMLElement>("#create-error");
     if (errEl) errEl.textContent = "";
     createSheet.open();
@@ -557,13 +572,13 @@ function bindCreateSheet() {
   const form = document.querySelector<HTMLFormElement>("#create-form");
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!currentView || currentView.kind !== "list") return;
     const title = document.querySelector<HTMLInputElement>("#create-title")?.value.trim() ?? "";
+    const listId = document.querySelector<HTMLSelectElement>("#create-list-id")?.value ?? "";
     const errEl = document.querySelector<HTMLElement>("#create-error");
-    if (!title) return;
+    if (!title || !listId) return;
     try {
       await invoke("create_reminder", {
-        listId: currentView.id,
+        listId,
         title,
         notes: "",
         priority: 0,
