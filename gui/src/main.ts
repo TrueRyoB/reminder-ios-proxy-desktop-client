@@ -12,6 +12,16 @@ const app = new Framework7({
   name: "iCloud Reminders",
 });
 
+// Framework7 has no automatic OS-dark-mode detection of its own (its ".dark"
+// class is purely a manual toggle) -- this is what actually wires it up to
+// Windows' own light/dark setting, live.
+function syncDarkMode(query: MediaQueryList | MediaQueryListEvent) {
+  document.documentElement.classList.toggle("dark", query.matches);
+}
+const darkMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+syncDarkMode(darkMediaQuery);
+darkMediaQuery.addEventListener("change", syncDarkMode);
+
 type LoginResult = { status: "complete" | "two_factor_required" };
 
 type RemindersList = {
@@ -19,6 +29,8 @@ type RemindersList = {
   title: string;
   reminderIds: string[];
   recordChangeTag: string | null;
+  colorHex: string | null;
+  badgeEmblem: string | null;
 };
 
 type Reminder = {
@@ -44,6 +56,36 @@ function escapeHtml(s: string): string {
   const div = document.createElement("div");
   div.textContent = s;
   return div.innerHTML;
+}
+
+// Apple's `BadgeEmblem` values are internal icon-set identifiers (e.g.
+// "people2", "sport6") from the Reminders app's icon picker -- not SF Symbol
+// names, and SF Symbols can't be embedded here anyway (Apple-only license).
+// This maps common prefixes to a plain Unicode glyph as a reasonable visual
+// stand-in; anything unrecognized falls back to the list's own initial.
+const EMBLEM_GLYPHS: Array<[string, string]> = [
+  ["people", "👥"],
+  ["sport", "🏃"],
+  ["lifestyle", "🛍️"],
+  ["nature", "🌿"],
+  ["food", "🍽️"],
+  ["home", "🏠"],
+  ["travel", "✈️"],
+  ["work", "💼"],
+  ["symbol", "📋"],
+  ["default", "📋"],
+];
+
+function glyphForList(list: RemindersList): string {
+  const emblem = list.badgeEmblem?.toLowerCase() ?? "";
+  const match = EMBLEM_GLYPHS.find(([prefix]) => emblem.startsWith(prefix));
+  if (match) return match[1];
+  return list.title.trim().charAt(0).toUpperCase() || "?";
+}
+
+function listBadgeHtml(list: RemindersList): string {
+  const color = list.colorHex ?? "#8E8E93";
+  return `<div class="list-badge" style="background-color: ${escapeHtml(color)}">${glyphForList(list)}</div>`;
 }
 
 const loginSheet = app.sheet.create({
@@ -74,6 +116,7 @@ function renderLists(lists: RemindersList[]) {
       (l) => `
         <li>
           <a href="#" class="item-link item-content list-item" data-list-id="${escapeHtml(l.id)}">
+            <div class="item-media">${listBadgeHtml(l)}</div>
             <div class="item-inner">
               <div class="item-title">${escapeHtml(l.title)}</div>
               <div class="item-after">${l.reminderIds.length}</div>
@@ -84,11 +127,22 @@ function renderLists(lists: RemindersList[]) {
     .join("");
 }
 
+// Native Reminders' overdue items render their due date in red; anything
+// else (future, or completed) uses the normal text color -- this is the
+// one color-coded signal in the reference screenshot that's driven by data
+// rather than by a fixed per-list/per-smart-list color.
+function dueDateHtml(r: Reminder): string {
+  if (!r.dueDate) return "";
+  const due = new Date(r.dueDate);
+  const isOverdue = !r.completed && due.getTime() < Date.now();
+  const cls = isOverdue ? "reminder-due reminder-due-overdue" : "reminder-due";
+  return `<div class="${cls}">${escapeHtml(due.toLocaleString("ja-JP"))}</div>`;
+}
+
 function renderReminders(reminders: Reminder[], showListTitle = false) {
   if (!remindersListEl) return;
   remindersListEl.innerHTML = reminders
     .map((r) => {
-      const due = r.dueDate ? new Date(r.dueDate).toLocaleString("ja-JP") : "";
       const listBadge =
         showListTitle && "listTitle" in r ? `<div class="item-footer">${escapeHtml((r as AggregatedReminder).listTitle)}</div>` : "";
       return `
@@ -98,11 +152,11 @@ function renderReminders(reminders: Reminder[], showListTitle = false) {
               <input type="checkbox" class="reminder-checkbox" data-reminder-id="${escapeHtml(r.id)}" ${r.completed ? "checked" : ""} />
             </div>
             <div class="item-inner">
-              <div class="item-title-row">
+              <div class="reminder-title-row">
                 <div class="item-title">${escapeHtml(r.title)}</div>
-                ${r.flagged ? '<div class="item-after">🚩</div>' : ""}
+                ${r.flagged ? '<div class="reminder-flag">🚩</div>' : ""}
               </div>
-              ${due || r.desc ? `<div class="item-subtitle">${escapeHtml(due)}</div>` : ""}
+              ${dueDateHtml(r)}
               ${r.desc ? `<div class="item-text">${escapeHtml(r.desc)}</div>` : ""}
               ${listBadge}
             </div>

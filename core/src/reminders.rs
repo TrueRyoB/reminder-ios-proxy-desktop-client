@@ -28,6 +28,17 @@ pub struct RemindersList {
     /// own web/native UI reorders when you drag a reminder.
     pub reminder_ids: Vec<String>,
     pub record_change_tag: Option<String>,
+    /// The user's chosen list color, as a `#RRGGBB` hex string. CloudKit
+    /// stores this as a JSON-encoded string in the `Color` field (itself
+    /// containing `daHexString` alongside RGB floats/symbolic names); we
+    /// only need the hex string for the sidebar's colored list badge.
+    pub color_hex: Option<String>,
+    /// Apple's internal icon-set identifier for this list's badge (e.g.
+    /// `"people2"`, `"sport6"`) -- an SF Symbol-adjacent name, not an SF
+    /// Symbol itself (which can't be embedded/licensed). The frontend maps
+    /// known prefixes to a plain Unicode glyph and falls back to the list's
+    /// initial letter for anything unrecognized.
+    pub badge_emblem: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -280,11 +291,17 @@ fn record_to_list(record: &Value) -> Option<RemindersList> {
     let reminder_ids = field_string(record, "ReminderIDs")
         .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
         .unwrap_or_default();
+    let color_hex = field_string(record, "Color")
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|v| v["daHexString"].as_str().map(str::to_string));
+    let badge_emblem = field_string(record, "BadgeEmblem");
     Some(RemindersList {
         id,
         title,
         reminder_ids,
         record_change_tag: record_change_tag(record),
+        color_hex,
+        badge_emblem,
     })
 }
 
