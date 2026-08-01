@@ -17,7 +17,9 @@ serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 rpassword = "7"
-keyring = "3"
+# See core/Cargo.toml: without `windows-native` this silently becomes an
+# in-memory mock store.
+keyring = { version = "3", features = ["windows-native"] }
 anyhow = "1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

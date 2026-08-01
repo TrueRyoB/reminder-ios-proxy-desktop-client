@@ -1,6 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "gui",
+  "productName": "reminder",
+  "mainBinaryName": "reminder",
   "version": "0.1.0",
   "identifier": "com.trueryob.reminderproxyclient",
   "build": {
@@ -13,9 +14,11 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "gui",
-        "width": 800,
-        "height": 600
+        "title": "reminder",
+        "width": 1200,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 600
       }
     ],
     "security": {
@@ -25,12 +28,23 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "TrueRyoB",
+    "copyright": "Copyright (c) 2026 TrueRyoB",
+    "category": "Productivity",
+    "shortDescription": "iCloud リマインダーのプロキシクライアント",
+    "longDescription": "iOS 標準リマインダーを CloudKit 経由で読み書きする Windows 常駐クライアント。課題(pull)と通知(push)を分離した献立型ダッシュボードを備えます。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "languages": ["Japanese", "English"],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }

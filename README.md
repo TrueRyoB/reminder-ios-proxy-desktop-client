@@ -18,6 +18,28 @@ Apple ID session. It is not affiliated with or endorsed by Apple. Apple can
 change this API at any time without notice, which may break this tool.
 Use at your own risk, on your own account.
 
+## Download (desktop app)
+
+The desktop app — **reminder** — is the primary way to use this project. Get the
+latest Windows installer from the
+[Releases page](https://github.com/TrueRyoB/reminder-ios-proxy-desktop-client/releases):
+
+| File | Notes |
+|---|---|
+| `reminder_<version>_x64-setup.exe` | NSIS, per-user install. **Recommended.** |
+| `reminder_<version>_x64_en-US.msi` | MSI alternative; normally unnecessary. |
+
+The installer is **not code-signed**, so Windows SmartScreen will warn on first
+run — choose *More info* → *Run anyway*.
+
+Requirements: Windows 10/11 x64, and an Apple ID with two-factor
+authentication. Notifications only fire while the app is running (it lives in
+the system tray; closing the window hides it rather than quitting), because
+Apple exposes no push mechanism for Reminders.
+
+The CLI below (`reminder-proxy-client`) is a debugging/verification tool for the
+same core library, not the intended end-user surface.
+
 ## Features
 
 - **Real-time-ish notifications**: background polling + Windows toast

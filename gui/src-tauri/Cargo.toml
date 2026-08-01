@@ -1,8 +1,9 @@
 [package]
 name = "gui"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "reminder -- desktop proxy client for iOS Reminders (Tauri frontend host)"
+authors = ["TrueRyoB"]
+license = "MIT"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -26,7 +27,9 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 reqwest = { version = "0.12", features = ["json", "cookies"] }
-keyring = "3"
+# See core/Cargo.toml: without `windows-native` this silently becomes an
+# in-memory mock store.
+keyring = { version = "3", features = ["windows-native"] }
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

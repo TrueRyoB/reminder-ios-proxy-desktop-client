@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  reminder — app icon source.
+
+  Regenerate every raster asset in ./icons from this file with:
+      cd gui && npx tauri icon src-tauri/app-icon.svg
+
+  Design constraints (this is why the mark is this plain):
+  - It has to survive 32x32 (icons/32x32.png, the taskbar/tray size), so the
+    bell is one thick silhouette with no interior detail and no thin strokes.
+  - Palette comes from the app's own stylesheet (gui/src/styles.css): the
+    "blue" custom property #007aff for the tile, "orange" #ff9500 for the
+    badge. (Note for future edits: a literal double hyphen is illegal inside
+    an XML comment, which is why the CSS variable names are unprefixed here.)
+  - The badge dot is the only nod to the notification (push) half of the
+    2-axis model. It is centred on (800,224), exactly the centre of the
+    tile's own top-right corner arc (rx=224), so it reads as concentric with
+    the corner instead of arbitrarily placed.
+  - The badge carries a tile-coloured ring (r=132) that is invisible against
+    the background but guarantees a gap if the bell ever grows into it; the
+    bell group is scaled to 0.88 and nudged down-left for the same reason.
+    Measured clearance between the two silhouettes is ~134 units, i.e. ~4px
+    once downscaled to 32x32.
+  - #tile uses userSpaceOnUse so the ring samples the *same* gradient
+    coordinates as the tile itself and therefore blends exactly; with the
+    default objectBoundingBox it would sample its own small bbox and show up
+    as a visible mismatched ring.
+  - No SVG filters: resvg (what `tauri icon` rasterizes with) handles
+    gradients reliably, blurs less so.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1024">
+      <stop offset="0" stop-color="#3d9bff" />
+      <stop offset="1" stop-color="#0060df" />
+    </linearGradient>
+    <linearGradient id="badge" gradientUnits="userSpaceOnUse" x1="0" y1="124" x2="0" y2="324">
+      <stop offset="0" stop-color="#ffb340" />
+      <stop offset="1" stop-color="#ff9500" />
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#tile)" />
+
+  <g fill="#ffffff" transform="translate(-30 30) translate(512 512) scale(0.88) translate(-512 -512)">
+    <!-- top knob (overlaps the dome so the two read as one silhouette) -->
+    <circle cx="512" cy="238" r="40" />
+    <!-- bell body: flared skirt + dome, symmetric about x=512 -->
+    <path d="M 292 648
+             C 340 620 360 560 360 452
+             C 360 340 428 262 512 262
+             C 596 262 664 340 664 452
+             C 664 560 684 620 732 648
+             Z" />
+    <!-- clapper: exact semicircle hanging below the rim -->
+    <path d="M 456 652 A 56 56 0 0 0 568 652 Z" />
+  </g>
+
+  <circle cx="800" cy="224" r="132" fill="url(#tile)" />
+  <circle cx="800" cy="224" r="100" fill="url(#badge)" />
+</svg>
