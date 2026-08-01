@@ -6,277 +6,160 @@
     <title>iCloud Reminders</title>
   </head>
   <body>
-    <div id="app">
-      <div class="panel panel-left panel-cover">
-        <div class="view">
-          <div class="page">
-            <div class="navbar">
-              <div class="navbar-bg"></div>
-              <div class="navbar-inner">
-                <div class="title">リスト</div>
-              </div>
-            </div>
-            <div class="page-content" id="lists-panel-content">
-              <div id="lists-error" class="block text-color-red"></div>
-              <div class="list simple-list media-list">
-                <ul>
-                  <li>
-                    <a href="#" class="item-link item-content" id="dashboard-nav-item">
-                      <div class="item-media"><div class="list-badge" style="background-color: #34c759">🏠</div></div>
-                      <div class="item-inner"><div class="item-title">ダッシュボード</div></div>
-                    </a>
-                  </li>
-                </ul>
-              </div>
-              <div class="block-title">スマートリスト</div>
-              <div class="list simple-list media-list">
-                <ul>
-                  <li>
-                    <a href="#" class="item-link item-content smart-item" data-smart-id="today">
-                      <div class="item-media"><div class="list-badge" style="background-color: #007aff">📅</div></div>
-                      <div class="item-inner"><div class="item-title">今日</div></div>
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" class="item-link item-content smart-item" data-smart-id="scheduled">
-                      <div class="item-media"><div class="list-badge" style="background-color: #ff3b30">🗓️</div></div>
-                      <div class="item-inner"><div class="item-title">予定</div></div>
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" class="item-link item-content smart-item" data-smart-id="flagged">
-                      <div class="item-media"><div class="list-badge" style="background-color: #ff9500">🚩</div></div>
-                      <div class="item-inner"><div class="item-title">フラグ付き</div></div>
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" class="item-link item-content smart-item" data-smart-id="all">
-                      <div class="item-media"><div class="list-badge" style="background-color: #8e8e93">📋</div></div>
-                      <div class="item-inner"><div class="item-title">すべて</div></div>
-                    </a>
-                  </li>
-                </ul>
-              </div>
-              <div class="block-title">マイリスト</div>
-              <div class="list simple-list media-list" id="lists-list">
-                <ul></ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="panel-backdrop"></div>
+    <!-- レイアウトは design/draft/dashboard-prototype.html(Gate 2 承認)が正 -->
+    <nav id="side">
+      <input class="side-search" id="search-input" type="search" placeholder="検索(課題のみ)" />
+      <button class="nav" id="dashboard-nav-item">
+        <span class="list-badge" style="background-color: #34c759">🏠</span>ダッシュボード
+      </button>
+      <div class="side-sect">マイリスト</div>
+      <div id="lists-list"></div>
+      <div id="lists-error" class="err"></div>
+      <div class="side-foot">具体リストは生ビュー(時点・習慣もここでは見えます)</div>
+    </nav>
 
-      <div class="view view-main view-init safe-areas">
-        <div class="page">
-          <div class="navbar">
-            <div class="navbar-bg"></div>
-            <div class="navbar-inner">
-              <div class="left">
-                <a href="#" class="link panel-open" data-panel="left">☰ リスト</a>
-              </div>
-              <div class="title" id="main-title">iCloud Reminders</div>
-              <div class="right">
-                <a href="#" id="edit-mode-btn" class="link" style="display: none">編集</a>
-                <a href="#" id="add-reminder-btn" class="link">＋</a>
-              </div>
-            </div>
-          </div>
-          <div class="page-content">
-            <div id="status-block" class="block block-strong-ios inset-ios text-align-center">
-              <p>読み込み中…</p>
-            </div>
-            <div id="reminders-error" class="block text-color-red"></div>
-            <div class="list inset-ios" id="search-box-container" style="display: none">
-              <ul>
-                <li class="item-content item-input">
-                  <div class="item-inner">
-                    <div class="item-input-wrap">
-                      <input id="search-input" type="search" placeholder="検索" />
-                    </div>
-                  </div>
-                </li>
-              </ul>
-            </div>
-            <div id="dashboard-summary" class="block block-strong-ios inset-ios" style="display: none"></div>
-            <div class="list media-list" id="reminders-list" style="display: none">
-              <ul></ul>
-            </div>
-          </div>
-        </div>
+    <div id="main">
+      <div id="topbar">
+        <h1 id="main-title">iCloud Reminders</h1>
+        <button class="qbtn" id="quick-task-btn" title="鳴りません">＋やること</button>
+        <button class="qbtn" id="quick-remind-btn" title="その時刻に鳴ります">＋リマインド</button>
+        <button class="qbtn" id="quick-event-btn" title="本番まで段階的に鳴ります">＋イベント</button>
+        <button class="qbtn" id="quick-later-btn" title="その時にならないと着手できないタスク。開始日が来たら行き先リストに現れます" style="display: none">＋習慣</button>
       </div>
-
-      <div id="login-sheet" class="sheet-modal">
-        <div class="sheet-modal-inner">
-          <div class="page-content">
-            <div class="block-title">Apple IDでログイン</div>
-            <form id="login-form">
-              <div class="list inset-ios">
-                <ul>
-                  <li class="item-content item-input">
-                    <div class="item-inner">
-                      <div class="item-title item-label">Apple ID</div>
-                      <div class="item-input-wrap">
-                        <input id="login-apple-id" type="email" autocomplete="username" required />
-                      </div>
-                    </div>
-                  </li>
-                  <li class="item-content item-input">
-                    <div class="item-inner">
-                      <div class="item-title item-label">パスワード</div>
-                      <div class="item-input-wrap">
-                        <input id="login-password" type="password" autocomplete="current-password" required />
-                      </div>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-              <p id="login-error" class="text-color-red text-align-center"></p>
-              <div class="block">
-                <button type="submit" class="button button-fill button-large">ログイン</button>
-              </div>
-            </form>
-          </div>
+      <!-- クイック投函行: 通常フロー配置なのでヘッダーに隠れない -->
+      <div id="quickrow"></div>
+      <div id="content">
+        <div id="status-block"><p>読み込み中…</p></div>
+        <div id="view-error" class="err"></div>
+        <div id="dash-content" style="display: none"></div>
+        <div id="list-toolbar" style="display: none">
+          <button id="edit-mode-btn" class="ghostbtn">編集(並び替え)</button>
+          <span class="list-toolbar-note">ドラッグで並び替え(iOS の表示順にも同期します)</span>
         </div>
-      </div>
-
-      <div id="two-factor-sheet" class="sheet-modal">
-        <div class="sheet-modal-inner">
-          <div class="page-content">
-            <div class="block-title">確認コードを入力</div>
-            <p class="block">信頼済みデバイスに送信された6桁のコードを入力してください。</p>
-            <form id="two-factor-form">
-              <div class="list inset-ios">
-                <ul>
-                  <li class="item-content item-input">
-                    <div class="item-inner">
-                      <div class="item-title item-label">確認コード</div>
-                      <div class="item-input-wrap">
-                        <input id="two-factor-code" type="text" inputmode="numeric" maxlength="6" required />
-                      </div>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-              <p id="two-factor-error" class="text-color-red text-align-center"></p>
-              <div class="block">
-                <button type="submit" class="button button-fill button-large">確認</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-      <div id="edit-sheet" class="sheet-modal">
-        <div class="sheet-modal-inner">
-          <div class="page-content">
-            <div class="block-title">編集</div>
-            <div class="list inset-ios">
-              <ul>
-                <li class="item-content item-input">
-                  <div class="item-inner">
-                    <div class="item-title item-label">タイトル</div>
-                    <div class="item-input-wrap"><input id="edit-title" type="text" /></div>
-                  </div>
-                </li>
-                <li class="item-content item-input">
-                  <div class="item-inner">
-                    <div class="item-title item-label">メモ</div>
-                    <div class="item-input-wrap"><textarea id="edit-notes" rows="2"></textarea></div>
-                  </div>
-                </li>
-                <li class="item-content item-input">
-                  <div class="item-inner">
-                    <div class="item-title item-label">優先度</div>
-                    <div class="item-input-wrap">
-                      <select id="edit-priority">
-                        <option value="0">なし</option>
-                        <option value="1">高</option>
-                        <option value="5">中</option>
-                        <option value="9">低</option>
-                      </select>
-                    </div>
-                  </div>
-                </li>
-                <li class="item-content item-input">
-                  <div class="item-inner">
-                    <div class="item-title item-label">期限</div>
-                    <div class="item-input-wrap"><input id="edit-due-date" type="datetime-local" /></div>
-                  </div>
-                </li>
-                <li class="item-content">
-                  <div class="item-inner">
-                    <div class="item-title">終日</div>
-                    <div class="item-after">
-                      <label class="toggle">
-                        <input type="checkbox" id="edit-all-day" />
-                        <span class="toggle-icon"></span>
-                      </label>
-                    </div>
-                  </div>
-                </li>
-                <li class="item-content">
-                  <div class="item-inner">
-                    <div class="item-title">フラグ</div>
-                    <div class="item-after">
-                      <label class="toggle">
-                        <input type="checkbox" id="edit-flagged" />
-                        <span class="toggle-icon"></span>
-                      </label>
-                    </div>
-                  </div>
-                </li>
-                <li class="item-content item-input">
-                  <div class="item-inner">
-                    <div class="item-title item-label">リスト</div>
-                    <div class="item-input-wrap">
-                      <select id="edit-list-id"></select>
-                    </div>
-                  </div>
-                </li>
-              </ul>
-            </div>
-            <p id="edit-error" class="text-color-red text-align-center"></p>
-            <div class="block">
-              <button type="button" id="edit-delete-btn" class="button button-large color-red">削除</button>
-              <button type="button" id="edit-close-btn" class="button button-large">閉じる</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div id="create-sheet" class="sheet-modal">
-        <div class="sheet-modal-inner">
-          <div class="page-content">
-            <div class="block-title" id="create-sheet-title">新規リマインダー</div>
-            <form id="create-form">
-              <div class="list inset-ios">
-                <ul>
-                  <li class="item-content item-input">
-                    <div class="item-inner">
-                      <div class="item-title item-label">タイトル</div>
-                      <div class="item-input-wrap"><input id="create-title" type="text" required /></div>
-                    </div>
-                  </li>
-                  <li class="item-content item-input">
-                    <div class="item-inner">
-                      <div class="item-title item-label">リスト</div>
-                      <div class="item-input-wrap">
-                        <select id="create-list-id" required></select>
-                      </div>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-              <p id="create-error" class="text-color-red text-align-center"></p>
-              <div class="block">
-                <button type="submit" class="button button-fill button-large">追加</button>
-                <button type="button" id="create-skip-btn" class="button button-large">スキップ</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <div id="rows" style="display: none"></div>
       </div>
     </div>
+
+    <div id="overlay"></div>
+
+    <div class="sheet" id="login-sheet">
+      <h3>Apple IDでログイン</h3>
+      <form id="login-form">
+        <div class="frow">
+          <label>Apple ID</label>
+          <input id="login-apple-id" type="email" autocomplete="username" required />
+        </div>
+        <div class="frow">
+          <label>パスワード</label>
+          <input id="login-password" type="password" autocomplete="current-password" required />
+        </div>
+        <p id="login-error" class="err"></p>
+        <div class="acts">
+          <button type="submit" class="primary">ログイン</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="sheet" id="two-factor-sheet">
+      <h3>確認コードを入力</h3>
+      <p class="muted">信頼済みデバイスに送信された6桁のコードを入力してください。</p>
+      <form id="two-factor-form">
+        <div class="frow">
+          <label>確認コード</label>
+          <input id="two-factor-code" type="text" inputmode="numeric" maxlength="6" required />
+        </div>
+        <p id="two-factor-error" class="err"></p>
+        <div class="acts">
+          <button type="submit" class="primary">確認</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 編集シート = 全射の受け皿(design/artist/dashboard.md 全射表) -->
+    <div class="sheet" id="edit-sheet">
+      <h3>編集 — 変更は即時反映</h3>
+      <div class="frow">
+        <label>タイトル</label>
+        <input id="edit-title" type="text" />
+      </div>
+      <div class="frow">
+        <label>メモ</label>
+        <textarea id="edit-notes" rows="2"></textarea>
+      </div>
+      <div class="frow">
+        <label>所要時間</label>
+        <select id="edit-size">
+          <option value="0">未設定</option>
+          <option value="1">大</option>
+          <option value="5">中</option>
+          <option value="9">小</option>
+        </select>
+        <span class="hint">旧「優先度」を転用(義務は皆平等)</span>
+      </div>
+      <div class="frow">
+        <label>日時</label>
+        <input id="edit-due-date" type="datetime-local" />
+      </div>
+      <div class="frow">
+        <label>終日=締切</label>
+        <input type="checkbox" id="edit-all-day" />
+        <span class="hint">終日=締切(鳴らない・並びの材料)/時刻あり=発火(鳴る)</span>
+      </div>
+      <div class="frow">
+        <label>着手中(🚩)</label>
+        <input type="checkbox" id="edit-flagged" />
+      </div>
+      <div class="frow">
+        <label>区分</label>
+        <select id="edit-cls">
+          <option value="">通常(課題)</option>
+          <option value="signal">時報(発火後に自動完了)</option>
+          <option value="habit">習慣</option>
+        </select>
+      </div>
+      <div class="frow">
+        <label>目的</label>
+        <input id="edit-purpose" type="text" placeholder="なんのため?(後続に継承)" />
+      </div>
+      <div class="frow">
+        <label>属性</label>
+        <div id="edit-tags" style="flex: 1; display: flex; gap: 6px; flex-wrap: wrap"></div>
+        <button type="button" id="edit-add-key" class="ghostbtn" style="padding: 4px 9px; font-size: 12px">＋キー</button>
+      </div>
+      <div class="frow">
+        <label>リスト</label>
+        <select id="edit-list-id"></select>
+      </div>
+      <div class="frow upcoming-only" style="display: none">
+        <label>行き先</label>
+        <select id="edit-target"></select>
+        <span class="hint">開始日到来で産む先</span>
+      </div>
+      <div class="frow upcoming-only" style="display: none">
+        <label>繰り返し</label>
+        <select id="edit-repeat">
+          <option value="0">なし(一回きり)</option>
+          <option value="1">毎日</option>
+          <option value="7">毎週</option>
+          <option value="14">隔週</option>
+          <option value="30">毎月(30日)</option>
+        </select>
+      </div>
+      <div class="frow upcoming-only" style="display: none">
+        <label>締切+N日</label>
+        <input id="edit-offset" type="number" min="0" step="1" placeholder="空=締切不明のまま産む" />
+      </div>
+      <p id="edit-error" class="err"></p>
+      <div class="acts">
+        <button type="button" id="edit-split-btn" class="ghostbtn">分解: 子カードに割る</button>
+        <button type="button" id="edit-delete-btn" class="ghostbtn danger">削除</button>
+        <button type="button" id="edit-close-btn" class="ghostbtn" style="margin-left: auto">閉じる</button>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+    <div id="preloader"><div class="spin"></div></div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

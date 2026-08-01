@@ -138,7 +138,7 @@ async fn main() -> Result<()> {
         }
         Commands::Create { list_id, title } => {
             let created = reminders
-                .create(&list_id, &title, "", 0, false, None)
+                .create(&list_id, &title, "", 0, false, None, false)
                 .await?;
             println!("作成成功: id={}", created.id);
         }

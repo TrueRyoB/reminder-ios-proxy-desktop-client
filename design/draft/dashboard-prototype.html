@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>dashboard prototype — Gate 2</title>
+<style>
+  :root{
+    --bg:#f2f2f7; --card:#fff; --ink:#1c1c1e; --sub:#8e8e93; --line:#e5e5ea;
+    --blue:#007aff; --red:#ff3b30; --orange:#ff9500; --green:#34c759; --purple:#af52de;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif; background:var(--bg); color:var(--ink); height:100vh; display:flex; overflow:hidden;}
+  button{font:inherit; cursor:pointer; border:none; background:none;}
+  input,select{font:inherit;}
+
+  /* ---- sidebar ---- */
+  #side{width:230px; background:#ebebf0; border-right:1px solid var(--line); padding:12px; display:flex; flex-direction:column; gap:6px; flex-shrink:0;}
+  #side .search{width:100%; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:#fff;}
+  .nav{padding:8px 10px; border-radius:8px; display:flex; gap:8px; align-items:center; width:100%; text-align:left;}
+  .nav:hover{background:#e0e0e6;} .nav.on{background:#d7d7de; font-weight:600;}
+  .dot{width:22px; height:22px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-size:12px; flex-shrink:0;}
+  #side .sect{font-size:11px; color:var(--sub); margin:10px 4px 2px;}
+  #side .foot{margin-top:auto; font-size:12px; color:var(--sub); padding:6px 10px;}
+  #side .foot a{color:var(--sub);}
+
+  /* ---- main ---- */
+  #main{flex:1; display:flex; flex-direction:column; min-width:0;}
+  #topbar{display:flex; align-items:center; gap:8px; padding:10px 16px; background:var(--card); border-bottom:1px solid var(--line);}
+  #topbar h1{font-size:16px; flex:1; min-width:0; white-space:nowrap; overflow:hidden;}
+  .qbtn{padding:5px 10px; border-radius:8px; background:#eef4ff; color:var(--blue); font-size:13px; font-weight:600;}
+  .qbtn:hover{background:#dcebff;}
+  #quickrow{background:#fbfbfd; border-bottom:1px solid var(--line); padding:8px 16px; display:none; gap:8px; align-items:center; flex-wrap:wrap;}
+  #quickrow.open{display:flex;}
+  #quickrow input[type=text]{flex:1; min-width:180px; padding:6px 10px; border:1px solid var(--line); border-radius:8px;}
+  #quickrow input[type=datetime-local],#quickrow input[type=date],#quickrow select{padding:5px 8px; border:1px solid var(--line); border-radius:8px; background:#fff;}
+  #quickrow .hint{width:100%; font-size:11px; color:var(--sub);}
+  #content{flex:1; overflow-y:auto; padding:16px;}
+
+  /* ---- shared bits ---- */
+  .cardbox{background:var(--card); border-radius:12px; border:1px solid var(--line); padding:12px; margin-bottom:12px;}
+  .muted{color:var(--sub); font-size:12px;}
+  .badge{display:inline-block; font-size:11px; padding:1px 7px; border-radius:9px; background:#eee; color:#555; margin-left:4px; white-space:nowrap;}
+  .badge.red{background:#ffe5e3; color:var(--red);} .badge.blue{background:#e3efff; color:var(--blue);}
+  .badge.orange{background:#fff0dc; color:#b26a00;} .badge.green{background:#e2f7e8; color:#1c7c3c;}
+  .badge.purple{background:#f3e8fb; color:var(--purple);}
+  .row{display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--line);}
+  .row:last-child{border-bottom:none;}
+  .row .t{flex:1; min-width:0;}
+  .row .t .name{font-size:14px;}
+  .row .t .meta{font-size:11px; color:var(--sub); margin-top:1px;}
+  .row.ghost{opacity:.55;}
+  .chk{width:18px; height:18px; flex-shrink:0;}
+  .flagbtn{font-size:15px; opacity:.35;} .flagbtn.on{opacity:1;}
+  .primary{background:var(--blue); color:#fff; padding:9px 18px; border-radius:10px; font-weight:600;}
+  .primary:hover{filter:brightness(1.07);}
+  .ghostbtn{padding:8px 14px; border-radius:10px; border:1px solid var(--line); background:#fff;}
+  .danger{color:var(--red);}
+
+  /* dashboard idle */
+  #balance{display:flex; gap:14px; font-size:12px; color:var(--sub); margin-bottom:12px; align-items:center;}
+  #balance b{color:var(--ink); font-size:15px; margin-right:2px;}
+  #nexthand{background:linear-gradient(135deg,#0a84ff,#0060df); color:#fff; border-radius:14px; padding:18px; margin-bottom:12px;}
+  #nexthand .lbl{font-size:11px; opacity:.8; letter-spacing:.06em;}
+  #nexthand .name{font-size:20px; font-weight:700; margin:6px 0;}
+  #nexthand .why{font-size:12px; opacity:.9;}
+  #nexthand .acts{margin-top:12px; display:flex; gap:8px;}
+  #nexthand .acts button{background:rgba(255,255,255,.18); color:#fff; padding:7px 14px; border-radius:9px; font-weight:600;}
+  .declare{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .declare select{padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:#fff;}
+
+  /* compose */
+  .compose{display:flex; gap:14px; align-items:flex-start;}
+  .col{flex:1; min-width:0;}
+  .cand{border:1px dashed var(--line); border-radius:10px; padding:8px 10px; margin-bottom:8px; background:#fff; display:flex; gap:8px; align-items:center; cursor:grab;}
+  .cand .t{flex:1;}
+  .plate-item{border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin-bottom:8px; background:#fff; display:flex; gap:8px; align-items:center; cursor:grab;}
+  .plate-item .eta{font-size:11px; color:var(--sub); width:44px; flex-shrink:0;}
+  #plate.dragover{outline:2px dashed var(--blue); outline-offset:4px; border-radius:10px;}
+  .capwrap{height:8px; border-radius:4px; background:#e8e8ee; overflow:hidden; margin:6px 0 2px;}
+  .capbar{height:100%; background:var(--green); transition:width .15s;}
+  .capbar.over{background:var(--red);}
+  .breather{border:1px dashed #c9a227; background:#fffaf0; border-radius:10px; padding:6px 10px; margin:-2px 0 8px; font-size:12px; color:#8a6d00; display:flex; gap:8px; align-items:center;}
+  .breather button{color:var(--blue); font-weight:600;}
+
+  /* run */
+  #runcard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:12px;}
+  #runcard .name{font-size:20px; font-weight:700; margin:4px 0 8px;}
+  #runcard .acts{display:flex; gap:8px; margin-top:14px;}
+  .doneline{text-decoration:line-through; color:var(--sub);}
+  .nowmark{color:var(--blue); font-weight:700;}
+
+  /* finish */
+  .finish{text-align:center; padding:48px 0;}
+  .finish .big{font-size:44px;} .finish h2{margin:10px 0 4px;}
+  .finish .acts{margin-top:18px; display:flex; gap:10px; justify-content:center;}
+
+  /* skeleton */
+  .skel{height:14px; border-radius:7px; background:linear-gradient(90deg,#e8e8ee,#f4f4f8,#e8e8ee); background-size:200% 100%; animation:sk 1s infinite linear; margin:12px 0;}
+  @keyframes sk{from{background-position:0 0}to{background-position:-200% 0}}
+
+  /* sheets (no slide animation — D3) */
+  #overlay{position:fixed; inset:0; background:rgba(0,0,0,.28); display:none; z-index:9;}
+  #overlay.open{display:block;}
+  .sheet{position:fixed; left:50%; transform:translateX(-50%); bottom:0; width:min(560px,96vw); background:var(--card); border-radius:14px 14px 0 0; padding:16px; z-index:10; display:none; max-height:86vh; overflow-y:auto;}
+  .sheet.open{display:block;}
+  .sheet h3{font-size:15px; margin-bottom:10px;}
+  .frow{display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--line); font-size:13px;}
+  .frow label{width:82px; color:var(--sub); flex-shrink:0;}
+  .frow input[type=text],.frow textarea,.frow select,.frow input[type=datetime-local]{flex:1; padding:6px 8px; border:1px solid var(--line); border-radius:8px; min-width:0;}
+  .sheet .acts{display:flex; gap:8px; margin-top:14px;}
+  #toast{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:8px 16px; border-radius:9px; font-size:13px; display:none; z-index:20;}
+  .empty{color:var(--sub); text-align:center; padding:28px 0; font-size:13px;}
+</style>
+</head>
+<body>
+
+<nav id="side">
+  <input class="search" id="search" type="search" placeholder="検索(課題のみ)" />
+  <button class="nav" id="nav-dash" onclick="go('dash')"><span class="dot" style="background:var(--green)">🏠</span>ダッシュボード</button>
+  <div class="sect">マイリスト</div>
+  <div id="navlists"></div>
+  <div class="foot">プロトタイプ(Gate 2) — <a href="#" onclick="openLogin();return false">ログイン画面を見る</a></div>
+</nav>
+
+<div id="main">
+  <div id="topbar">
+    <h1 id="title">ダッシュボード</h1>
+    <button class="qbtn" onclick="quick('task')" title="鳴りません">＋やること</button>
+    <button class="qbtn" onclick="quick('due')" title="その時刻に鳴ります">＋リマインド</button>
+    <button class="qbtn" onclick="quick('ritual')" title="本番まで段階的に鳴ります">＋イベント</button>
+  </div>
+  <div id="quickrow"></div>
+  <div id="content"></div>
+</div>
+
+<div id="overlay" onclick="closeSheets()"></div>
+<div class="sheet" id="editsheet"></div>
+<div class="sheet" id="loginsheet">
+  <h3>Apple ID でログイン(既存実装を踏襲・変更なし)</h3>
+  <div class="frow"><label>Apple ID</label><input type="text" placeholder="example@icloud.com"/></div>
+  <div class="frow"><label>パスワード</label><input type="text" placeholder="••••••••"/></div>
+  <div class="acts"><button class="primary" onclick="closeSheets()">ログイン(デモ)</button></div>
+</div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ===== demo data ===== */
+const now = new Date();
+const min = (m)=>new Date(now.getTime()+m*60000);
+const day = (d,h=12,mi=0)=>{const x=new Date(now); x.setDate(x.getDate()+d); x.setHours(h,mi,0,0); return x;};
+const SIZE_MIN = {"大":60,"中":25,"小":10};
+const ENVS = ["家","PC","外出","スーツ"];
+const lists = [
+  {id:"shu", title:"就活", color:"var(--purple)", g:"👔"},
+  {id:"uni", title:"大学", color:"var(--blue)", g:"🎓"},
+  {id:"home", title:"家のこと", color:"var(--green)", g:"🏠"},
+];
+let seq = 0; const nid = ()=>"t"+(++seq);
+/* cls: task | signal(時報/時点) | habit(習慣) ; due:{t,allDay} allDay=締切(鳴らない)/時刻=発火(鳴る) */
+let tasks = [
+  {id:nid(),list:"home",title:"粗大ごみの回収予約",size:"小",due:{t:day(-1),allDay:true},env:"PC",purpose:"暮らし",cls:"task",flag:false,done:false,age:3},
+  {id:nid(),list:"uni",title:"教授へ日程返信",size:"小",due:{t:min(120),allDay:false},env:"PC",purpose:"卒論",cls:"task",flag:false,done:false,age:1},
+  {id:nid(),list:"shu",title:"ES提出(A社)",size:"大",due:{t:day(1),allDay:true},env:"PC",purpose:"就活",cls:"task",flag:true,done:false,age:5},
+  {id:nid(),list:"uni",title:"ゼミ発表スライド v1",size:"大",due:{t:day(3),allDay:true},env:"PC",purpose:"卒論",cls:"task",flag:false,done:false,age:4},
+  {id:nid(),list:"shu",title:"証明写真を撮り直す",size:"小",due:{t:day(4),allDay:true},env:"外出",purpose:"就活",cls:"task",flag:false,done:false,age:2},
+  {id:nid(),list:"uni",title:"参考文献リストの整理",size:"大",due:{t:day(7),allDay:true},env:"PC",purpose:"卒論",cls:"task",flag:false,done:false,age:6},
+  {id:nid(),list:"shu",title:"OB訪問のお礼メール",size:"小",due:null,env:"PC",purpose:"就活",cls:"task",flag:false,done:false,age:12},
+  {id:nid(),list:"home",title:"洗剤を買う",size:"小",due:null,env:"外出",purpose:"暮らし",cls:"task",flag:false,done:false,age:20},
+  {id:nid(),list:"shu",title:"模擬面接の録画を見返す",size:"中",due:null,env:"スーツ",purpose:"就活",cls:"task",flag:false,done:false,age:8},
+  {id:nid(),list:"shu",title:"面接(B社) 想定問答の最終確認",size:"中",due:{t:day(2,14),allDay:false},env:"スーツ",purpose:"就活",cls:"task",flag:false,done:false,age:3,group:"g1"},
+  {id:nid(),list:"shu",title:"面接(B社)まで3時間 — 身支度",size:"小",due:{t:day(2,11)},env:"家",cls:"signal",done:false,age:3,group:"g1"},
+  {id:nid(),list:"shu",title:"面接(B社)まで1時間 — 移動開始",size:"小",due:{t:day(2,13)},env:"外出",cls:"signal",done:false,age:3,group:"g1"},
+  {id:nid(),list:"shu",title:"面接(B社)まで10分 — 入室準備",size:"小",due:{t:day(2,13,50)},env:"スーツ",cls:"signal",done:false,age:3,group:"g1"},
+  {id:nid(),list:"home",title:"水を飲む(1時間ごと 9:00-18:00)",size:"小",due:null,env:"家",cls:"habit",done:false,age:30},
+  {id:nid(),list:"uni",title:"会議前: 資料リンクを共有",size:"小",due:{t:min(55),allDay:false},env:"PC",cls:"signal",done:false,age:0},
+];
+
+/* ===== derivations(写像) ===== */
+const isTask = t=>t.cls==="task" && !t.done;
+const overdue = t=>isTask(t)&&t.due&&t.due.t<now;
+const dueToday = t=>isTask(t)&&t.due&&!overdue(t)&&t.due.t.toDateString()===now.toDateString();
+const noDeadline = t=>isTask(t)&&!t.due;
+const weekDue = t=>isTask(t)&&t.due&&!overdue(t)&&(t.due.t-now)<7*864e5;
+const slackDays = t=>t.due?Math.max(0,(t.due.t-now)/864e5):Infinity;
+const fmtDue = t=>{
+  if(!t.due) return "締切不明";
+  const d=t.due.t, sameD=d.toDateString()===now.toDateString();
+  const dd=`${d.getMonth()+1}/${d.getDate()}`;
+  const hm=`${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`;
+  return (t.due.allDay?`締切 ${sameD?"今日":dd}`:`🔔 ${sameD?hm:dd+" "+hm}`);
+};
+const listOf = id=>lists.find(l=>l.id===id);
+
+/* 締切支配ゾーン: 期限切れ(古い順)→着手中→今日(時刻順) */
+function deadlineZone(){
+  const seen=new Set(); const pick=(arr)=>arr.filter(t=>!seen.has(t.id)).map(t=>(seen.add(t.id),t));
+  const od=pick(tasks.filter(overdue).sort((a,b)=>a.due.t-b.due.t));
+  const wip=pick(tasks.filter(t=>isTask(t)&&t.flag));
+  const td=pick(tasks.filter(dueToday).sort((a,b)=>a.due.t-b.due.t));
+  return {od,wip,td,all:[...od,...wip,...td]};
+}
+/* 編成候補: 逼迫→環境一致→系統一致→浮上 */
+function candidates(env, plate){
+  const inPlate=new Set(plate.map(t=>t.id));
+  const zone=new Set(deadlineZone().all.map(t=>t.id));
+  const purposes=new Set(plate.map(t=>t.purpose));
+  return tasks.filter(t=>isTask(t)&&!inPlate.has(t.id)&&!zone.has(t.id)).map(t=>{
+    let score=0, why=[];
+    if(slackDays(t)<=2){score+=100; why.push(["⏳逼迫","red"]);}
+    if(env && t.env===env){score+=30; why.push(["👔同環境","purple"]);}
+    if(purposes.has(t.purpose)){score+=20; why.push(["🔗同系統","blue"]);}
+    if(!t.due){score+=25; why.push(["🌱いつでも","green"]);
+      if(t.age>=7){score+=Math.min(t.age,30); why.push([`⬆浮上(${t.age}日)`,"orange"]);}}
+    if(!why.length) why.push(["・柔軟","" ]);
+    return {t,score,why};
+  }).sort((a,b)=>b.score-a.score);
+}
+
+/* ===== state ===== */
+const S={view:"dash", mode:"idle", listId:null, plate:[], decl:null, runIdx:0, editListMode:false, q:""};
+
+/* ===== helpers ===== */
+const $=s=>document.querySelector(s);
+const esc=s=>{const d=document.createElement("div");d.textContent=s;return d.innerHTML;};
+function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",1800);}
+function sizeBadge(t){return `<span class="badge">${t.size}</span>`;}
+function whyBadges(why){return why.map(([w,c])=>`<span class="badge ${c}">${w}</span>`).join("");}
+
+/* ===== navigation(読込中スケルトンを挟む) ===== */
+function go(view, listId){
+  S.view=view; S.listId=listId??null; S.q=""; $("#search").value="";
+  if(view==="dash"&&S.mode==="idle"){} /* keep mode */
+  renderNav();
+  $("#content").innerHTML=`<div class="skel" style="width:38%"></div><div class="skel"></div><div class="skel" style="width:72%"></div>`;
+  setTimeout(render,170);
+}
+function renderNav(){
+  $("#navlists").innerHTML=lists.map(l=>{
+    const n=tasks.filter(t=>t.list===l.id&&!t.done).length;
+    return `<button class="nav ${S.view==="list"&&S.listId===l.id?"on":""}" onclick="go('list','${l.id}')">
+      <span class="dot" style="background:${l.color}">${l.g}</span>${esc(l.title)}<span class="muted" style="margin-left:auto">${n}</span></button>`;
+  }).join("");
+  $("#nav-dash").className="nav"+(S.view==="dash"?" on":"");
+}
+
+/* ===== render root ===== */
+function render(){
+  renderNav();
+  const c=$("#content");
+  if(S.view==="dash"){$("#title").textContent="ダッシュボード";
+    if(S.mode==="idle") return renderIdle(c);
+    if(S.mode==="compose") return renderCompose(c);
+    if(S.mode==="run") return renderRun(c);
+    if(S.mode==="finish") return renderFinish(c);
+  }
+  if(S.view==="list") return renderList(c);
+  if(S.view==="search") return renderSearch(c);
+}
+
+/* ===== 待機モード: Q1a 残高 + Q2a 次の一手 + 宣言 ===== */
+function renderIdle(c){
+  const z=deadlineZone();
+  const balUnknown=tasks.filter(noDeadline).length;
+  const balWeek=tasks.filter(weekDue).length;
+  const next=z.all[0];
+  let html=`<div id="balance">
+    <span><b>${balUnknown}</b>件 締切不明</span><span><b>${balWeek}</b>件 今週締切</span>
+    <span class="muted" style="margin-left:auto">残高は数字だけ — 壁は出しません</span></div>`;
+  if(next){
+    const why=overdue(next)?"⚠ 期限切れ — 最優先です":(next.flag?"🚩 着手中 — まず完遂しましょう":"📅 今日が期限です");
+    html+=`<div id="nexthand"><div class="lbl">次の一手</div>
+      <div class="name">${esc(next.title)}</div>
+      <div class="why">${why} ・ ${fmtDue(next)} ・ ${next.size}(${SIZE_MIN[next.size]}分) ・ ${esc(listOf(next.list).title)}</div>
+      <div class="acts">
+        <button onclick="startSingle('${next.id}')">これをやる</button>
+        <button onclick="completeTask('${next.id}');">完了にする</button>
+      </div></div>`;
+    const rest=z.all.slice(1);
+    if(rest.length){
+      html+=`<div class="cardbox"><div class="muted" style="margin-bottom:4px">締切支配ゾーンの続き(義務なので常時表示・少数)</div>`+
+        rest.map(rowHtml).join("")+`</div>`;
+    }
+  }else{
+    html+=`<div class="cardbox empty">義務(期限切れ・今日)はありません 🎉<br/>時間があるなら、下で宣言して皿を組みましょう。</div>`;
+  }
+  html+=`<div class="cardbox"><div class="muted" style="margin-bottom:8px">セッション宣言 — この時間で何を組む?(Q2b)</div>
+    <div class="declare">今から
+      <select id="d-min"><option value="30">30分</option><option value="60" selected>1時間</option><option value="120">2時間</option><option value="180">3時間</option></select>
+      <select id="d-env"><option value="">環境指定なし</option>${ENVS.map(e=>`<option>${e}</option>`).join("")}</select>
+      <button class="primary" onclick="declare()">皿を組む</button>
+      <span class="muted">Google カレンダー連携は将来この宣言を自動化(入力ポート)</span>
+    </div></div>`;
+  c.innerHTML=html;
+}
+function rowHtml(t){
+  const l=listOf(t.list);
+  const badge=overdue(t)?`<span class="badge red">⚠期限切れ</span>`:(dueToday(t)?`<span class="badge blue">今日</span>`:"");
+  return `<div class="row">
+    <input type="checkbox" class="chk" onclick="completeTask('${t.id}')"/>
+    <button class="flagbtn ${t.flag?"on":""}" title="着手中" onclick="toggleFlag('${t.id}')">🚩</button>
+    <div class="t"><div class="name">${esc(t.title)} ${badge}${sizeBadge(t)}</div>
+    <div class="meta">${fmtDue(t)} ・ ${esc(l.title)} ・ ${t.env}</div></div>
+    <button class="muted" onclick="openEdit('${t.id}')">…</button></div>`;
+}
+
+/* ===== 編成モード: Q2b 献立コンポーザ + Q2c 理由バッジ ===== */
+function declare(){
+  S.decl={min:+$("#d-min").value, env:$("#d-env").value||null};
+  S.plate=[...deadlineZone().all];            /* 義務は皿に最初から載る */
+  /* 仮組み: 締切不明を必ず1枚混ぜ、余白を高スコア順に自動で埋める(全て外せる) */
+  const room=()=>S.decl.min-plateMinutes();
+  const nd=candidates(S.decl.env,S.plate).find(x=>!x.t.due&&SIZE_MIN[x.t.size]<=room());
+  if(nd) S.plate.push(nd.t);
+  for(const x of candidates(S.decl.env,S.plate)){
+    if(S.plate.length>=8) break;
+    if(SIZE_MIN[x.t.size]<=room()) S.plate.push(x.t);
+  }
+  S.mode="compose"; render();
+}
+function plateMinutes(){return S.plate.reduce((a,t)=>a+SIZE_MIN[t.size],0);}
+function renderCompose(c){
+  const cands=candidates(S.decl.env,S.plate);
+  const used=plateMinutes(), cap=S.decl.min, pct=Math.min(100,Math.round(used/cap*100));
+  const plateHtml=S.plate.map((t,i)=>{
+    /* 息抜き提案: 大中2連続の後 */
+    let brSuggest="";
+    if(i>=1&&t.size!=="小"&&S.plate[i-1].size!=="小"&&S.plate[i+1]&&S.plate[i+1].size!=="小"){
+      const small=cands.find(x=>x.t.size==="小");
+      if(small) brSuggest=`<div class="breather">☕ ここで息抜きを挟みませんか — <button onclick="insertPlate('${small.t.id}',${i+1})">${esc(small.t.title)}(小)を挿入</button></div>`;
+    }
+    return `<div class="plate-item" draggable="true" data-i="${i}"
+        ondragstart="dragPlate(event,${i})" ondragover="event.preventDefault()" ondrop="dropPlate(event,${i})">
+      <div class="t"><div class="name">${esc(t.title)} ${sizeBadge(t)}</div>
+      <div class="meta">${fmtDue(t)} ・ ${t.env}</div></div>
+      <button onclick="removePlate(${i})">✕</button></div>`+brSuggest;
+  }).join("");
+  c.innerHTML=`
+  <div class="cardbox"><div class="muted">宣言: 今から ${cap}分${S.decl.env?` ・ 環境=${S.decl.env}`:""} — 皿は自動で仮組み済み(締切不明を必ず1枚混ぜます)。入れ替え・削除は自由。</div></div>
+  <div class="compose">
+    <div class="col cardbox"><b style="font-size:13px">候補(理由つき)</b>
+      ${cands.length?cands.map(x=>`
+        <div class="cand" draggable="true" ondragstart="dragCand(event,'${x.t.id}')">
+          <div class="t"><div class="name">${esc(x.t.title)} ${sizeBadge(x.t)}</div>
+          <div class="meta">${fmtDue(x.t)} ・ ${x.t.env} ${whyBadges(x.why)}</div></div>
+          <button class="qbtn" onclick="addPlate('${x.t.id}')">＋皿へ</button>
+        </div>`).join(""):`<div class="empty">候補はもうありません</div>`}
+    </div>
+    <div class="col cardbox" id="plate" ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')" ondrop="dropPlateEnd(event)">
+      <b style="font-size:13px">皿(このセッションの献立)</b>
+      <div class="capwrap"><div class="capbar ${used>cap?"over":""}" style="width:${pct}%"></div></div>
+      <div class="muted">${used>cap?"溢れ気味 — 減らすか時間を伸ばしてください":(used/cap<0.7?"まだゆとりがあります":"ちょうど良い量です")}</div>
+      <div style="margin-top:8px">${plateHtml||`<div class="empty">義務ゼロ・皿は空です。候補から選んでください。</div>`}</div>
+      <div style="display:flex; gap:8px; margin-top:10px">
+        <button class="primary" ${S.plate.length?"":"disabled"} onclick="startRun()">この皿で開始</button>
+        <button class="ghostbtn" onclick="S.mode='idle';render()">やめる</button>
+      </div>
+    </div>
+  </div>`;
+}
+let dragId=null, dragFrom=null;
+function dragCand(e,id){dragId=id;dragFrom=null;}
+function dragPlate(e,i){dragFrom=i;dragId=null;}
+function dropPlateEnd(e){e.preventDefault();$("#plate").classList.remove("dragover");
+  if(dragId){addPlate(dragId);} }
+function dropPlate(e,i){e.preventDefault();e.stopPropagation();
+  if(dragId){insertPlate(dragId,i);}
+  else if(dragFrom!==null&&dragFrom!==i){const [m]=S.plate.splice(dragFrom,1);S.plate.splice(i,0,m);render();}}
+function addPlate(id){const t=tasks.find(x=>x.id===id);if(t&&!S.plate.includes(t)){S.plate.push(t);render();}}
+function insertPlate(id,i){const t=tasks.find(x=>x.id===id);if(t&&!S.plate.includes(t)){S.plate.splice(i,0,t);render();}}
+function removePlate(i){S.plate.splice(i,1);render();}
+
+/* ===== 実行モード: Q3a/Q3b/Q3c ===== */
+function startSingle(id){S.plate=[tasks.find(t=>t.id===id)];S.decl={min:SIZE_MIN[S.plate[0].size],env:null};startRun();}
+function startRun(){S.mode="run";S.runIdx=0;const t=S.plate[0];if(t&&!t.flag){t.flag=true;} render();}
+function renderRun(c){
+  const t=S.plate[S.runIdx];
+  if(!t){S.mode="finish";return render();}
+  const rest=S.plate.map((x,i)=>{
+    const cls=i<S.runIdx?"doneline":(i===S.runIdx?"nowmark":"");
+    return `<div class="row ghost" style="opacity:${i===S.runIdx?1:.6}"><div class="t"><div class="name ${cls}">${i===S.runIdx?"▶ ":""}${esc(x.title)} ${sizeBadge(x)}</div></div></div>`;
+  }).join("");
+  c.innerHTML=`
+  <div id="runcard">
+    <div class="muted">いまこれ(🚩 着手中は自動で点きます)</div>
+    <div class="name">🚩 ${esc(t.title)}</div>
+    <div class="muted">${fmtDue(t)} ・ ${t.env} ・ 目安 ${SIZE_MIN[t.size]}分 ・ ${esc(listOf(t.list).title)}</div>
+    <div class="acts">
+      <button class="primary" onclick="runDone()">完了</button>
+      <button class="ghostbtn" onclick="runSkip()">スキップ(合わない)</button>
+      <button class="ghostbtn" onclick="S.mode='idle';render()">中断して待機へ</button>
+    </div>
+  </div>
+  <div class="cardbox"><div class="muted" style="margin-bottom:4px">皿の進行(${S.runIdx+1}/${S.plate.length})</div>${rest}</div>`;
+}
+function runDone(){
+  const t=S.plate[S.runIdx];
+  completeTask(t.id,true);
+  S.runIdx++;
+  render();
+  promptNext(t);
+}
+function runSkip(){
+  const t=S.plate.splice(S.runIdx,1)[0];
+  if(t)t.flag=false;
+  toast("スキップを編成へフィードバックしました(このセッションでは勧めません)");
+  render();
+}
+function renderFinish(c){
+  c.innerHTML=`<div class="finish cardbox">
+    <div class="big">🎉</div><h2>皿を完走しました</h2>
+    <div class="muted">今日はもう終わっていい? それとももう一皿?(Q5)</div>
+    <div class="acts">
+      <button class="ghostbtn" onclick="S.mode='idle';render()">おしまい</button>
+      <button class="primary" onclick="S.mode='idle';render();setTimeout(()=>{document.getElementById('d-min')&&declareFocus()},200)">もう一皿</button>
+    </div></div>`;
+}
+function declareFocus(){const el=$("#d-min"); if(el){el.scrollIntoView({behavior:"smooth"}); el.focus();}}
+
+/* ===== 完了 → 後続キャプチャ(Q4) ===== */
+function completeTask(id,silent){
+  const t=tasks.find(x=>x.id===id); if(!t)return;
+  t.done=true; t.flag=false;
+  if(!silent){render(); promptNext(t);}
+}
+function promptNext(t){
+  openQuick("task",{heading:`「${t.title}」を完了しました。次のタスクを追加しますか?`, list:t.list});
+}
+function toggleFlag(id){const t=tasks.find(x=>x.id===id);t.flag=!t.flag;render();}
+
+/* ===== クイック投函(Q0 / D3: 3入口・インライン・アニメなし) ===== */
+function quick(kind){openQuick(kind);}
+function openQuick(kind,opt={}){
+  const q=$("#quickrow"); q.className="open"; q.dataset.kind=kind;
+  const listSel=`<select id="q-list">${lists.map(l=>`<option value="${l.id}" ${opt.list===l.id?"selected":""}>${esc(l.title)}</option>`).join("")}</select>`;
+  const sizeSel=`<select id="q-size"><option>小</option><option selected>中</option><option>大</option></select>`;
+  const head=opt.heading?`<span style="width:100%;font-size:12px;color:var(--green);font-weight:600">${esc(opt.heading)}</span>`:"";
+  if(kind==="task") q.innerHTML=`${head}<b style="font-size:13px">やること</b>
+    <input type="text" id="q-title" placeholder="タイトル(Enterで追加)"/>${listSel}${sizeSel}
+    <input type="date" id="q-due" title="任意: 締切日(鳴りません)"/>
+    <button class="primary" onclick="submitQuick()">追加</button><button class="ghostbtn" onclick="closeQuick()">閉じる</button>
+    <span class="hint">鳴りません。締切日を付けると、静かに並びの材料になるだけです。</span>`;
+  if(kind==="due") q.innerHTML=`${head}<b style="font-size:13px">リマインド</b>
+    <input type="text" id="q-title" placeholder="タイトル"/>${listSel}${sizeSel}
+    <input type="datetime-local" id="q-due"/>
+    <button class="primary" onclick="submitQuick()">追加</button><button class="ghostbtn" onclick="closeQuick()">閉じる</button>
+    <span class="hint">この時刻に鳴ります(iOS でも)。</span>`;
+  if(kind==="ritual") q.innerHTML=`${head}<b style="font-size:13px">イベント</b>
+    <input type="text" id="q-title" placeholder="行事名(例: 面接(C社))"/>${listSel}
+    <input type="datetime-local" id="q-due" title="行事時刻"/>
+    ラダー: <label><input type="checkbox" class="q-lad" value="180" checked/>3h前</label>
+    <label><input type="checkbox" class="q-lad" value="60" checked/>1h前</label>
+    <label><input type="checkbox" class="q-lad" value="10" checked/>10分前</label>
+    <button class="primary" onclick="submitQuick()">一括作成</button><button class="ghostbtn" onclick="closeQuick()">閉じる</button>
+    <span class="hint">本番まで段階的に鳴ります。課題カード1枚+時点カードN枚を生成しグループで紐づけ、時点カードは発火後に自動完了(掃除)。</span>`;
+  const ti=$("#q-title"); ti&&ti.focus();
+  ti&&ti.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();submitQuick();}});
+}
+function closeQuick(){$("#quickrow").className="";$("#quickrow").innerHTML="";}
+function submitQuick(){
+  const kind=$("#quickrow").dataset.kind;
+  const title=($("#q-title")?.value||"").trim(); if(!title)return;
+  const list=$("#q-list").value;
+  if(kind==="task"){
+    const d=$("#q-due").value;
+    tasks.push({id:nid(),list,title,size:$("#q-size").value,due:d?{t:new Date(d+"T12:00"),allDay:true}:null,env:"PC",purpose:"",cls:"task",flag:false,done:false,age:0});
+  }
+  if(kind==="due"){
+    const d=$("#q-due").value; if(!d){toast("日時を入れてください");return;}
+    tasks.push({id:nid(),list,title,size:$("#q-size").value,due:{t:new Date(d),allDay:false},env:"PC",purpose:"",cls:"task",flag:false,done:false,age:0});
+  }
+  if(kind==="ritual"){
+    const d=$("#q-due").value; if(!d){toast("行事時刻を入れてください");return;}
+    const ev=new Date(d); const g="g"+Date.now();
+    tasks.push({id:nid(),list,title,size:"中",due:{t:ev,allDay:false},env:"スーツ",purpose:"",cls:"task",flag:false,done:false,age:0,group:g});
+    document.querySelectorAll(".q-lad:checked").forEach(ch=>{
+      const m=+ch.value;
+      tasks.push({id:nid(),list,title:`${title}まで${m>=60?(m/60)+"時間":m+"分"}`,size:"小",due:{t:new Date(ev.getTime()-m*60000),allDay:false},env:"家",cls:"signal",done:false,age:0,group:g});
+    });
+    toast("課題1枚+時点カードを作成しました(具体リストで見えます)");
+  }
+  closeQuick(); render();
+}
+
+/* ===== 具体リスト(raw・唯一の生ビュー / D5 並び替え復活) ===== */
+function renderList(c){
+  const l=listOf(S.listId); $("#title").textContent=l.title;
+  let items=tasks.filter(t=>t.list===l.id&&!t.done);
+  if(S.q) items=items.filter(t=>t.title.toLowerCase().includes(S.q));
+  const rows=items.map(t=>{
+    const cls=t.cls==="signal"?`<span class="badge orange">時点</span>`:(t.cls==="habit"?`<span class="badge green">習慣</span>`:"");
+    const grp=t.group?`<span class="badge purple">儀式</span>`:"";
+    return `<div class="row ${t.cls!=="task"?"ghost":""}" draggable="${S.editListMode}" >
+      <input type="checkbox" class="chk" onclick="completeTask('${t.id}')"/>
+      ${t.cls==="task"?`<button class="flagbtn ${t.flag?"on":""}" onclick="toggleFlag('${t.id}')">🚩</button>`:`<span style="width:19px"></span>`}
+      <div class="t"><div class="name">${esc(t.title)} ${cls}${grp}${t.cls==="task"?sizeBadge(t):""}</div>
+      <div class="meta">${fmtDue(t)} ・ ${t.env||""}</div></div>
+      ${S.editListMode?`<span class="muted">⠿ ドラッグで並び替え(ReminderIDs に同期)</span>`:`<button class="muted" onclick="openEdit('${t.id}')">…</button>`}
+    </div>`;}).join("");
+  c.innerHTML=`
+    <div class="cardbox">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <input class="search" style="flex:1;padding:6px 10px;border:1px solid var(--line);border-radius:8px" placeholder="このリスト内を検索" value="${esc(S.q)}" oninput="S.q=this.value.toLowerCase();renderList(document.getElementById('content'))"/>
+        <button class="ghostbtn" onclick="S.editListMode=!S.editListMode;render()">${S.editListMode?"完了":"編集(並び替え)"}</button>
+      </div>
+      <div class="muted" style="margin-bottom:4px">具体リストは唯一の生ビュー — 時点カード・習慣もここでは見えます(編集経路)</div>
+      ${rows||`<div class="empty">このリストにリマインダーはありません。</div>`}
+    </div>`;
+}
+
+/* ===== 検索(課題ありフィルタ / Q1b) ===== */
+$("#search").addEventListener("input",e=>{
+  const v=e.target.value.trim().toLowerCase();
+  if(!v){go("dash");return;}
+  S.view="search"; S.q=v; render();
+});
+function renderSearch(c){
+  $("#title").textContent=`検索: ${S.q}`;
+  const hits=tasks.filter(t=>isTask(t)&&t.title.toLowerCase().includes(S.q));
+  c.innerHTML=`<div class="cardbox"><div class="muted" style="margin-bottom:4px">課題のみを検索しています(時点・習慣は具体リストで)</div>
+    ${hits.map(rowHtml).join("")||`<div class="empty">検索結果はありません。</div>`}</div>`;
+}
+
+/* ===== 編集シート(Q1c 整備 — 全射の受け皿) ===== */
+function openEdit(id){
+  const t=tasks.find(x=>x.id===id); if(!t)return;
+  const sh=$("#editsheet");
+  const dt=t.due?new Date(t.due.t.getTime()-t.due.t.getTimezoneOffset()*60000).toISOString().slice(0,16):"";
+  sh.innerHTML=`<h3>編集 — 変更は即時反映(現行踏襲)</h3>
+    <div class="frow"><label>タイトル</label><input type="text" value="${esc(t.title)}" onchange="t_('${id}','title',this.value)"/></div>
+    <div class="frow"><label>メモ</label><textarea rows="2" onchange="t_('${id}','desc',this.value)"></textarea></div>
+    <div class="frow"><label>所要時間</label><select onchange="t_('${id}','size',this.value)">
+      ${["大","中","小"].map(s=>`<option ${t.size===s?"selected":""}>${s}</option>`).join("")}</select>
+      <span class="muted">旧「優先度」フィールドを転用(義務は皆平等)</span></div>
+    <div class="frow"><label>日時</label><input type="datetime-local" value="${dt}" onchange="t_due('${id}',this.value)"/></div>
+    <div class="frow"><label>終日=締切</label><input type="checkbox" ${t.due&&t.due.allDay?"checked":""} onchange="t_allday('${id}',this.checked)"/>
+      <span class="muted">終日=締切(鳴らない・並びの材料)/時刻あり=発火(鳴る)</span></div>
+    <div class="frow"><label>区分</label><select onchange="t_('${id}','cls',this.value)">
+      <option value="task" ${t.cls==="task"?"selected":""}>通常(課題)</option>
+      <option value="signal" ${t.cls==="signal"?"selected":""}>時報(発火後に自動完了)</option>
+      <option value="habit" ${t.cls==="habit"?"selected":""}>習慣(ローカル周期通知)</option></select></div>
+    <div class="frow"><label>目的</label><input type="text" value="${esc(t.purpose||"")}" placeholder="なんのため?(後続に継承)" onchange="t_('${id}','purpose',this.value)"/></div>
+    <div class="frow"><label>環境</label><select onchange="t_('${id}','env',this.value)">${ENVS.map(e=>`<option ${t.env===e?"selected":""}>${e}</option>`).join("")}</select></div>
+    <div class="frow"><label>リスト</label><select onchange="t_('${id}','list',this.value)">${lists.map(l=>`<option value="${l.id}" ${t.list===l.id?"selected":""}>${esc(l.title)}</option>`).join("")}</select></div>
+    <div class="frow"><label>分解</label><button class="ghostbtn" onclick="splitTask('${id}')">子カードに割る(目的を継承)</button></div>
+    <div class="acts">
+      <button class="ghostbtn danger" onclick="delTask('${id}')">削除</button>
+      <button class="ghostbtn" style="margin-left:auto" onclick="closeSheets()">閉じる</button>
+    </div>`;
+  sh.classList.add("open"); $("#overlay").classList.add("open");
+}
+function t_(id,k,v){const t=tasks.find(x=>x.id===id);t[k]=v;render();}
+function t_due(id,v){const t=tasks.find(x=>x.id===id);t.due=v?{t:new Date(v),allDay:t.due?t.due.allDay:false}:null;render();}
+function t_allday(id,v){const t=tasks.find(x=>x.id===id);if(t.due)t.due.allDay=v;render();}
+function splitTask(id){
+  const t=tasks.find(x=>x.id===id);
+  const name=prompt("子カードのタイトル(親の目的を継承します)","");
+  if(!name)return;
+  tasks.push({id:nid(),list:t.list,title:name,size:"小",due:null,env:t.env,purpose:t.purpose,cls:"task",flag:false,done:false,age:0,parent:id});
+  toast("子カードを作成しました(親子はローカルで1段)"); render();
+}
+function delTask(id){
+  if(!confirm("削除しますか?(論理削除)"))return;
+  const t=tasks.find(x=>x.id===id); t.done=true; closeSheets(); render();
+}
+function openLogin(){$("#loginsheet").classList.add("open");$("#overlay").classList.add("open");}
+function closeSheets(){document.querySelectorAll(".sheet").forEach(s=>s.classList.remove("open"));$("#overlay").classList.remove("open");}
+
+go("dash");
+</script>
+</body>
+</html>

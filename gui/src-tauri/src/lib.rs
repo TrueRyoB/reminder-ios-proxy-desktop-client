@@ -17,6 +17,18 @@ pub fn run() {
         .with_env_filter(tracing_subscriber::EnvFilter::new("info"))
         .init();
 
+    // Startup generational backup of the proxy-local store (expression §1):
+    // the store is the only place a card's *meaning* (時報/習慣・儀式グループ・
+    // 目的・環境) lives, and losing it is silent -- cards themselves survive
+    // in CloudKit. Documents is a folder users naturally back up.
+    if let Ok(dir) = reminder_core::session_store::data_dir() {
+        match reminder_core::proxy_store::backup_to_documents(&dir) {
+            Ok(Some(path)) => tracing::info!(path = %path.display(), "proxy store backed up"),
+            Ok(None) => {}
+            Err(e) => tracing::warn!(error = %e, "proxy store backup failed"),
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         // Persists/restores window position, size, and maximized state
@@ -36,6 +48,10 @@ pub fn run() {
             commands::update_reminder,
             commands::delete_reminder,
             commands::reorder_list,
+            commands::get_proxy_store,
+            commands::set_proxy_meta,
+            commands::set_env_keys,
+            commands::set_list_excluded,
         ])
         .setup(|app| {
             let quit_item = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;

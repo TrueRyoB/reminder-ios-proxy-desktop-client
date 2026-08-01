@@ -12,6 +12,7 @@ pub mod bootstrap;
 pub mod cloudkit;
 pub mod crdt;
 pub mod notify;
+pub mod proxy_store;
 pub mod reminders;
 pub mod session_store;
 pub mod srp;

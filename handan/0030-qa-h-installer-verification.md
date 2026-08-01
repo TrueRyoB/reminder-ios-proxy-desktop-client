@@ -23,7 +23,7 @@ handan/0025のビルドキャッシュ破損対応(`cargo clean`)により、GUI
 1. `gui_0.1.0_x64-setup.exe /S`(NSIS標準のサイレントインストールフラグ)
    でインストール → exit code 0。
 2. レジストリ(`HKCU:\...\Uninstall\gui`)を確認し、実際に
-   `C:\Users\ryora.RHAAZOE\AppData\Local\gui`にインストールされたことを確認。
+   `%LOCALAPPDATA%\gui`にインストールされたことを確認。
    `gui.exe`/`uninstall.exe`の存在を確認。
 3. インストール済みの`gui.exe`を直接起動 → `Get-Process`で有効な
    `MainWindowHandle`/`MainWindowTitle='gui'`/`Responding: True`を確認

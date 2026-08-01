@@ -8,6 +8,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use reminder_core::proxy_store::{self, ProxyMeta, ProxyStore};
 use reminder_core::reminders::{Reminder, RemindersList};
 use reminder_core::{auth, bootstrap, reminders, session_store};
 use serde::Serialize;
@@ -189,13 +190,63 @@ pub async fn create_reminder(
     priority: i64,
     flagged: bool,
     due_date: Option<DateTime<Utc>>,
+    all_day: bool,
     state: State<'_, AppState>,
 ) -> Result<Reminder, String> {
     let reminders = reminders_service(&state).await?;
     reminders
-        .create(&list_id, &title, &notes, priority, flagged, due_date)
+        .create(&list_id, &title, &notes, priority, flagged, due_date, all_day)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Whole proxy-local store (per-card meta + notifier bookkeeping) in one
+/// read -- the frontend joins it against CloudKit cards by reminder id.
+#[tauri::command]
+pub fn get_proxy_store() -> Result<ProxyStore, String> {
+    let dir = session_store::data_dir().map_err(|e| e.to_string())?;
+    Ok(proxy_store::load(&dir))
+}
+
+/// Replace the registered attribute-key vocabulary (U4). The tags
+/// themselves live in card titles as `[key]`; this list only feeds the
+/// tag picker and the session declaration dropdown.
+#[tauri::command]
+pub fn set_env_keys(keys: Vec<String>) -> Result<(), String> {
+    let dir = session_store::data_dir().map_err(|e| e.to_string())?;
+    proxy_store::with_store(&dir, |store| {
+        store.env_keys = keys;
+    })
+    .map_err(|e| e.to_string())
+}
+
+/// Toggle a list's exclusion from dashboard aggregation (メモ系リスト用)。
+#[tauri::command]
+pub fn set_list_excluded(list_id: String, excluded: bool) -> Result<(), String> {
+    let dir = session_store::data_dir().map_err(|e| e.to_string())?;
+    proxy_store::with_store(&dir, |store| {
+        if excluded {
+            store.excluded_lists.insert(list_id.clone());
+        } else {
+            store.excluded_lists.remove(&list_id);
+        }
+    })
+    .map_err(|e| e.to_string())
+}
+
+/// Upsert one card's local meta. An all-`None` meta deletes the entry (the
+/// card falls back to the field-derived default classification).
+#[tauri::command]
+pub fn set_proxy_meta(id: String, meta: ProxyMeta) -> Result<(), String> {
+    let dir = session_store::data_dir().map_err(|e| e.to_string())?;
+    proxy_store::with_store(&dir, |store| {
+        if meta.is_empty() {
+            store.meta.remove(&id);
+        } else {
+            store.meta.insert(id.clone(), meta);
+        }
+    })
+    .map_err(|e| e.to_string())
 }
 
 /// A single unified path for every in-place edit (completed/title/notes/

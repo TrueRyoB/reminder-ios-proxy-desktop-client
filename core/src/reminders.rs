@@ -61,6 +61,10 @@ pub struct Reminder {
     pub desc: String,
     pub completed: bool,
     pub due_date: Option<DateTime<Utc>>,
+    /// CloudKit `CreationDate` -- read-only here; drives the aging boost
+    /// that floats long-neglected deadline-less tasks into the plate
+    /// (design/idea/dashboard.md の編成スコア).
+    pub created: Option<DateTime<Utc>>,
     pub priority: i64,
     pub flagged: bool,
     pub all_day: bool,
@@ -196,6 +200,10 @@ impl RemindersService {
             .ok_or_else(|| anyhow!("reminder not found: {reminder_id}"))
     }
 
+    /// `all_day` distinguishes the two meanings a due date can carry
+    /// (design/idea/expression.md §1): a timed date fires notifications on
+    /// both iOS and this proxy (発火時刻), while an all-day date is a silent
+    /// deadline used only as pull-side sorting material (締切).
     #[allow(clippy::too_many_arguments)]
     pub async fn create(
         &self,
@@ -205,6 +213,7 @@ impl RemindersService {
         priority: i64,
         flagged: bool,
         due_date: Option<DateTime<Utc>>,
+        all_day: bool,
     ) -> Result<Reminder> {
         let reminder_uuid = Uuid::new_v4().to_string().to_uppercase();
         let record_name_str = format!("Reminder/{reminder_uuid}");
@@ -214,7 +223,7 @@ impl RemindersService {
         let now_ms = Utc::now().timestamp_millis();
 
         let mut fields = json!({
-            "AllDay": { "type": "INT64", "value": 0 },
+            "AllDay": { "type": "INT64", "value": i64::from(all_day) },
             "Completed": { "type": "INT64", "value": 0 },
             "CreationDate": { "type": "TIMESTAMP", "value": now_ms },
             "Deleted": { "type": "INT64", "value": 0 },
@@ -370,6 +379,7 @@ fn record_to_reminder(record: &Value) -> Option<Reminder> {
         desc,
         completed: field_bool(record, "Completed"),
         due_date: field_int(record, "DueDate").and_then(millis_to_datetime),
+        created: field_int(record, "CreationDate").and_then(millis_to_datetime),
         priority: field_int(record, "Priority").unwrap_or(0),
         flagged: field_bool(record, "Flagged"),
         all_day: field_bool(record, "AllDay"),
