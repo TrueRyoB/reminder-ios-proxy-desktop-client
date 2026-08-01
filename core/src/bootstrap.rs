@@ -12,6 +12,24 @@ use crate::session_store;
 
 pub const KEYRING_SERVICE: &str = "reminder-proxy-client";
 
+/// Deletes the Apple ID password from Windows Credential Manager, returning
+/// whether anything was actually there.
+///
+/// Windows generic credentials are scoped to the *user*, not the application:
+/// any process running as the same user can `CredRead` ours. That makes a
+/// stored account password (which grants far more than Reminders access) a
+/// poor trade, so the GUI no longer writes one and calls this on startup to
+/// clear anything an earlier version left behind. The CLI only writes one
+/// when explicitly asked with `--save-password`.
+pub fn forget_stored_password(apple_id: &str) -> Result<bool> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, apple_id)?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(true),
+        Err(keyring::Error::NoEntry) => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// pyicloud's RemindersService uses the shared CloudKit database webservice
 /// ("ckdatabasews"), not a "reminders"-named entry -- that key (if present
 /// at all) points at the legacy CalDAV-compat backend ("caldavj"), which

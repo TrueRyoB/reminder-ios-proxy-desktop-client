@@ -72,7 +72,7 @@ pub async fn login(
         auth::LoginOutcome::Complete(data) => {
             let http = client.http_client();
             let client_id = client.client_id().to_string();
-            persist_and_store_password(&client, &apple_id, &password).map_err(|e| e.to_string())?;
+            persist_session(&client).map_err(|e| e.to_string())?;
             make_ready(&app, &state, http, &client_id, &data)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -82,7 +82,6 @@ pub async fn login(
             let mut guard = state.auth.lock().await;
             *guard = AuthState::AwaitingTwoFactor {
                 client: Box::new(client),
-                password,
             };
             Ok(LoginResult::TwoFactorRequired)
         }
@@ -95,10 +94,10 @@ pub async fn submit_two_factor_code(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let (mut client, password) = {
+    let mut client = {
         let mut guard = state.auth.lock().await;
         match std::mem::replace(&mut *guard, AuthState::LoggedOut) {
-            AuthState::AwaitingTwoFactor { client, password } => (client, password),
+            AuthState::AwaitingTwoFactor { client } => client,
             other => {
                 *guard = other;
                 return Err("2FAコードの入力は待機していません".to_string());
@@ -112,10 +111,9 @@ pub async fn submit_two_factor_code(
         .map_err(|e| e.to_string())?;
     let data = client.trust_session().await.map_err(|e| e.to_string())?;
 
-    let apple_id = client.persisted_state().apple_id.unwrap_or_default();
     let http = client.http_client();
     let client_id = client.client_id().to_string();
-    persist_and_store_password(&client, &apple_id, &password).map_err(|e| e.to_string())?;
+    persist_session(&client).map_err(|e| e.to_string())?;
     make_ready(&app, &state, http, &client_id, &data)
         .await
         .map_err(|e| e.to_string())?;
@@ -310,21 +308,18 @@ async fn make_ready(
     Ok(())
 }
 
-/// Best-effort, matching the CLI's `ensure_login`: stashing the password in
-/// Windows Credential Manager lets a fully-expired session (both the
-/// session token AND the trust token invalidated) re-login without a
-/// password prompt, since only the persisted session/trust tokens go stale
-/// on their own -- the account password does not.
-fn persist_and_store_password(
-    client: &auth::AppleAuthClient,
-    apple_id: &str,
-    password: &str,
-) -> anyhow::Result<()> {
+/// Persists cookies + Apple's session/trust tokens (DPAPI-sealed, see
+/// `reminder_core::dpapi`) so a restart resumes without a prompt.
+///
+/// This deliberately does *not* stash the account password anywhere. An
+/// earlier version wrote it to Windows Credential Manager to make a
+/// fully-expired session re-login silently, but Credential Manager entries
+/// are readable by any process running as the same user, and the password
+/// grants the whole Apple account rather than just Reminders -- a bad trade
+/// for a rare convenience, especially since a lapsed trust token means Apple
+/// asks for a 2FA code anyway. `bootstrap::forget_stored_password` clears
+/// anything the earlier version left behind.
+fn persist_session(client: &auth::AppleAuthClient) -> anyhow::Result<()> {
     let dir = session_store::data_dir()?;
-    bootstrap::persist_state(client, &dir)?;
-
-    if let Ok(entry) = keyring::Entry::new(bootstrap::KEYRING_SERVICE, apple_id) {
-        let _ = entry.set_password(password);
-    }
-    Ok(())
+    bootstrap::persist_state(client, &dir)
 }

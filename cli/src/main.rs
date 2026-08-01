@@ -13,6 +13,17 @@ struct Cli {
     #[arg(long, global = true)]
     apple_id: Option<String>,
 
+    /// Save the Apple ID password to Windows Credential Manager so later runs
+    /// skip the prompt.
+    ///
+    /// Off by default, and the GUI never does this: Credential Manager
+    /// entries are scoped to the Windows *user*, not to an application, so
+    /// any process you run can read the password back -- and it unlocks the
+    /// whole Apple account, not just Reminders. Opt in only if you accept
+    /// that. `forget-password` removes it again.
+    #[arg(long, global = true)]
+    save_password: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -58,6 +69,10 @@ enum Commands {
     /// Fire a test Windows toast notification. Does not touch any iCloud
     /// data or require login -- purely local.
     TestNotify,
+    /// Delete the Apple ID password from Windows Credential Manager (only
+    /// ever written by an explicit `--save-password`, or by app versions
+    /// before 0.1.1). Does not touch the persisted session.
+    ForgetPassword,
     /// Poll for due reminders and fire Windows toast notifications.
     /// Only works while this process is running -- Apple exposes no push
     /// mechanism for Reminders, so there is no way to wake up otherwise.
@@ -101,17 +116,26 @@ async fn main() -> Result<()> {
         .apple_id
         .ok_or_else(|| anyhow!("--apple-id is required for this command"))?;
 
-    if let Commands::Login = cli.command {
-        login_test(&apple_id).await?;
+    if let Commands::ForgetPassword = cli.command {
+        if bootstrap::forget_stored_password(&apple_id)? {
+            println!("保存済みパスワードを Windows 資格情報マネージャーから削除しました。");
+        } else {
+            println!("保存済みパスワードはありません。");
+        }
         return Ok(());
     }
 
-    let (http, client_id, account_data) = ensure_login(&apple_id).await?;
+    if let Commands::Login = cli.command {
+        login_test(&apple_id, cli.save_password).await?;
+        return Ok(());
+    }
+
+    let (http, client_id, account_data) = ensure_login(&apple_id, cli.save_password).await?;
     let service_root = bootstrap::reminders_service_root(&account_data)?;
     let reminders = reminders::RemindersService::new(http, &service_root, &client_id);
 
     match cli.command {
-        Commands::Login | Commands::TestNotify => unreachable!(),
+        Commands::Login | Commands::TestNotify | Commands::ForgetPassword => unreachable!(),
         Commands::Lists => {
             let lists = reminders.lists().await?;
             for l in &lists {
@@ -230,7 +254,7 @@ async fn check_due_reminders(
 
 /// Log in (resuming a persisted session if possible) and return an
 /// authenticated HTTP client plus the `accountLogin` response data.
-async fn ensure_login(apple_id: &str) -> Result<(reqwest::Client, String, Value)> {
+async fn ensure_login(apple_id: &str, save_password: bool) -> Result<(reqwest::Client, String, Value)> {
     if let Some(resumed) = bootstrap::try_resume_session(apple_id).await? {
         return Ok(resumed);
     }
@@ -258,18 +282,24 @@ async fn ensure_login(apple_id: &str) -> Result<(reqwest::Client, String, Value)
         }
     };
 
-    if !from_keyring
-        && let Err(e) = keyring_entry.set_password(&password)
-    {
-        eprintln!("[警告] パスワードをキーリングに保存できませんでした: {e}");
+    // Only ever written on an explicit opt-in -- see the `--save-password`
+    // doc comment for why storing it is not the default.
+    if save_password && !from_keyring {
+        match keyring_entry.set_password(&password) {
+            Ok(()) => eprintln!(
+                "[注意] パスワードを Windows 資格情報マネージャーに保存しました。\
+                 同じユーザーで動く他のプロセスから読み取れます(forget-password で削除)。"
+            ),
+            Err(e) => eprintln!("[警告] パスワードをキーリングに保存できませんでした: {e}"),
+        }
     }
 
     bootstrap::persist_state(&client, &dir)?;
     Ok((client.http_client(), client.client_id().to_string(), data))
 }
 
-async fn login_test(apple_id: &str) -> Result<()> {
-    let (_, _, data) = ensure_login(apple_id).await?;
+async fn login_test(apple_id: &str, save_password: bool) -> Result<()> {
+    let (_, _, data) = ensure_login(apple_id, save_password).await?;
     println!("ログイン成功。");
     print_webservices(&data);
     Ok(())

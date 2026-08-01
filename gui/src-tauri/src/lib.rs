@@ -27,6 +27,31 @@ pub fn run() {
             Ok(None) => {}
             Err(e) => tracing::warn!(error = %e, "proxy store backup failed"),
         }
+
+        // Two cleanups that have to run before any session is touched:
+        //
+        // 1. `load_auth_state` re-seals a pre-existing plaintext
+        //    auth_state.json in place (see session_store::read_sealed), so
+        //    reading it here is what actually migrates an install upgraded
+        //    from a version that stored the tokens in the clear.
+        // 2. Earlier versions wrote the Apple ID password to Windows
+        //    Credential Manager, which any process running as the same user
+        //    can read. Nothing writes it any more; delete what is there.
+        let persisted = reminder_core::session_store::load_auth_state(&dir);
+        if let Some(apple_id) = persisted.apple_id.as_deref() {
+            match reminder_core::bootstrap::forget_stored_password(apple_id) {
+                Ok(true) => tracing::info!(
+                    "removed the Apple ID password left in Windows Credential Manager \
+                     by an earlier version"
+                ),
+                Ok(false) => {}
+                Err(e) => tracing::warn!(
+                    error = %e,
+                    "could not remove the stored Apple ID password; it may still be \
+                     readable by other processes running as this user"
+                ),
+            }
+        }
     }
 
     tauri::Builder::default()

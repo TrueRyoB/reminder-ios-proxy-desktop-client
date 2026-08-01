@@ -15,10 +15,11 @@ use reminder_core::reminders::RemindersService;
 pub enum AuthState {
     #[default]
     LoggedOut,
-    AwaitingTwoFactor {
-        client: Box<AppleAuthClient>,
-        password: String,
-    },
+    /// No password is carried across the 2FA wait: `validate_trusted_device_code`
+    /// and `trust_session` both work off the session this client already holds,
+    /// and nothing downstream stores the password any more, so keeping it here
+    /// would only extend how long the account password sits in memory.
+    AwaitingTwoFactor { client: Box<AppleAuthClient> },
     Ready { reminders: Arc<RemindersService> },
 }
 

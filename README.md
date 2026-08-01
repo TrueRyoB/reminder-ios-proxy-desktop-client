@@ -40,6 +40,27 @@ Apple exposes no push mechanism for Reminders.
 The CLI below (`reminder-proxy-client`) is a debugging/verification tool for the
 same core library, not the intended end-user surface.
 
+## Where your credentials live
+
+| Secret | Stored | Protection |
+|---|---|---|
+| iCloud session + trust tokens (`auth_state.json`) | `%APPDATA%\reminder-proxy-client\data\` | DPAPI-encrypted (user scope) |
+| iCloud session cookies (`cookies.json`) | same | DPAPI-encrypted (user scope) |
+| Apple ID password | **not stored** by the desktop app | — |
+
+The desktop app never writes your password anywhere; it clears any copy an
+earlier version left in Windows Credential Manager on startup. The CLI stores
+one only if you pass `--save-password`, and `forget-password` deletes it.
+
+DPAPI encryption means a copy of the folder is useless on its own — a backup, a
+cloud-synced copy, another Windows account, or an offline disk image cannot be
+decrypted without your Windows logon. **It does not isolate the data from other
+programs you run as the same Windows user.** Windows provides no per-application
+boundary for a normal desktop app: same-user processes can decrypt these files,
+read Credential Manager, or read this app's memory. If you need a boundary that
+holds against same-user code, the session has to be locked behind a passphrase
+that is never stored — open an issue if you want that mode.
+
 ## Features
 
 - **Real-time-ish notifications**: background polling + Windows toast

@@ -1,6 +1,6 @@
 [package]
 name = "reminder-core"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "iCloud Reminders private CloudKit API client: auth, CRUD, reorder, CRDT text encoding."
 license = "MIT"
@@ -36,6 +36,13 @@ flate2 = "1"
 
 [target.'cfg(windows)'.dependencies]
 notify-rust = "4"
+# DPAPI (CryptProtectData) for at-rest encryption of the persisted session --
+# see src/dpapi.rs. Win32_Foundation is needed for LocalFree, which frees the
+# buffers DPAPI returns.
+windows-sys = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+] }
 
 [build-dependencies]
 prost-build = "0.13"
