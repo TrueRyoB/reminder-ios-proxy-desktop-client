@@ -565,16 +565,23 @@ function renderIdle() {
         </div>
       </div>`;
     const rest = zone.all.slice(1);
-    if (rest.length > 0) {
+    const undated = tasks.filter((r) => !r.dueDate && r.id !== next.id);
+    const continuation = [...rest, ...undated.filter((r) => !rest.some((x) => x.id === r.id))];
+    if (continuation.length > 0) {
       // 規律: 続きが想定以上でもここでだけスクロール(max-height は CSS)
       html += `
         <div class="cardbox">
           <div class="muted" style="margin-bottom:4px">締切支配ゾーンの続き(義務・少数)</div>
-          <div class="zone-rest">${rest.map((r) => rowHtml(r, { showList: true })).join("")}</div>
+          <div class="zone-rest">${continuation.map((r) => rowHtml(r, { showList: true })).join("")}</div>
         </div>`;
     }
   } else {
-    html += `<div class="cardbox empty">義務(期限切れ・今日)はありません 🎉<br/>時間があるなら、下で宣言して皿を組みましょう。</div>`;
+    const undated = tasks.filter((r) => !r.dueDate);
+    if (undated.length > 0) {
+      html += `<div class="cardbox"><div class="muted" style="margin-bottom:4px">締切支配ゾーンの続き(義務・少数)</div><div class="zone-rest">${undated.map((r) => rowHtml(r, { showList: true })).join("")}</div></div>`;
+    } else {
+      html += `<div class="cardbox empty">義務(期限切れ・今日)はありません 🎉<br/>時間があるなら、下で宣言して皿を組みましょう。</div>`;
+    }
   }
 
   html += `
@@ -955,10 +962,10 @@ function openQuick(kind: QuickKind, opt: { heading?: string; listId?: string } =
     inner = `${head}<b>やること</b>
       <input type="text" id="q-title" placeholder="タイトル(Enterで追加)" />
       ${listSel}${sizeSel}
-      <input type="date" id="q-due" title="任意: 締切日(鳴りません)" />
+      <input type="date" id="q-due" title="任意: 開始日(その日まで待機)" />
       <button class="primary" id="q-submit">追加</button>
       <button class="ghostbtn" id="q-close">閉じる</button>
-      <span class="quick-hint">鳴りません。締切日を付けると、静かに並びの材料になるだけです。</span>`;
+      <span class="quick-hint">開始日なしなら行き先へすぐ追加します。開始日を付けると upcoming で静かに待機し、その日に行き先リストへ現れます。</span>`;
   } else if (kind === "remind") {
     inner = `${head}<b>リマインド</b>
       <input type="text" id="q-title" placeholder="タイトル" />
@@ -983,10 +990,10 @@ function openQuick(kind: QuickKind, opt: { heading?: string; listId?: string } =
         <option value="14">隔週</option>
         <option value="30">毎月(30日)</option>
       </select>
-      締切+<input type="number" id="q-offset" min="0" step="1" style="width:56px" />日
+      開始後の締切+<input type="number" id="q-offset" min="0" step="1" style="width:56px" />日
       <button class="primary" id="q-submit">習慣として置く</button>
       <button class="ghostbtn" id="q-close">閉じる</button>
-      <span class="quick-hint">その時にならないと着手できないタスク。開始日が来たら行き先リストに現れます(それまで参照面には出ません)。繰り返しなら発火後に次回へ自動で再装填。締切+N日は空なら締切不明のまま産みます。</span>`;
+      <span class="quick-hint">開始日が来るまで待機し、その日に行き先リストへ現れます(それまで参照面には出ません)。繰り返しなら発火後に次回へ自動で再装填。開始後の締切+N日は空なら締切不明のまま産みます。</span>`;
   } else {
     inner = `${head}<b>イベント</b>
       <input type="text" id="q-title" placeholder="行事名(例: 面接(C社))" />
@@ -1050,7 +1057,7 @@ async function submitQuick() {
           notes: "",
           priority,
           flagged: false,
-          dueDate: new Date(`${d}T12:00`).toISOString(),
+          dueDate: new Date(`${d}T00:00`).toISOString(),
           allDay: true, // 開始日は鳴らない担体で持つ
         });
         const meta: ProxyMeta = { targetList: target };
@@ -1062,18 +1069,30 @@ async function submitQuick() {
       toast("習慣として置きました(開始日に行き先リストへ現れます)");
     } else if (kind === "task") {
       const d = $<HTMLInputElement>("#q-due")?.value ?? "";
-      const dueDate = d ? new Date(`${d}T12:00`).toISOString() : null;
-      await withLoading(() =>
-        invoke("create_reminder", {
-          listId,
-          title,
-          notes: "",
-          priority,
-          flagged: false,
-          dueDate,
-          allDay: dueDate !== null,
-        }),
-      );
+      if (listId === upcomingListId) {
+        toast("行き先には upcoming 以外のリストを選んでください");
+        return;
+      }
+      if (!d) {
+        await withLoading(() => invoke("create_reminder", {
+          listId, title, notes: "", priority, flagged: false, dueDate: null, allDay: false,
+        }));
+      } else {
+        if (!upcomingListId) {
+          toast("開始日つきのやることには、iOSで「upcoming」リストを先に作成してください");
+          return;
+        }
+        await withLoading(async () => {
+          const card = await invoke<Reminder>("create_reminder", {
+            listId: upcomingListId, title, notes: "", priority, flagged: false,
+            dueDate: new Date(`${d}T00:00`).toISOString(), allDay: true,
+          });
+          const meta: ProxyMeta = { targetList: listId };
+          await invoke("set_proxy_meta", { id: card.id, meta });
+          metaMap[card.id] = meta;
+        });
+        toast("開始日まで待機します。当日に行き先リストへ現れます");
+      }
     } else if (kind === "remind") {
       const d = $<HTMLInputElement>("#q-due")?.value ?? "";
       if (!d) {

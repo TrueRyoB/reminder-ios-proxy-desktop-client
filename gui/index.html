@@ -97,13 +97,13 @@
         <span class="hint">旧「優先度」を転用(義務は皆平等)</span>
       </div>
       <div class="frow">
-        <label>日時</label>
+        <label>日時 / 開始日</label>
         <input id="edit-due-date" type="datetime-local" />
       </div>
       <div class="frow">
-        <label>終日=締切</label>
+        <label>終日</label>
         <input type="checkbox" id="edit-all-day" />
-        <span class="hint">終日=締切(鳴らない・並びの材料)/時刻あり=発火(鳴る)</span>
+        <span class="hint">upcoming では開始日(鳴らない)。通常カードでは終日=締切、時刻あり=発火。</span>
       </div>
       <div class="frow">
         <label>着手中(🚩)</label>
@@ -146,7 +146,7 @@
         </select>
       </div>
       <div class="frow upcoming-only" style="display: none">
-        <label>締切+N日</label>
+        <label>開始後の締切+N日</label>
         <input id="edit-offset" type="number" min="0" step="1" placeholder="空=締切不明のまま産む" />
       </div>
       <p id="edit-error" class="err"></p>

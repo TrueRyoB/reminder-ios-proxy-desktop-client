@@ -42,6 +42,7 @@ notify-rust = "4"
 windows-sys = { version = "0.60", features = [
     "Win32_Foundation",
     "Win32_Security_Cryptography",
+    "Win32_System_Registry",
 ] }
 
 [build-dependencies]
