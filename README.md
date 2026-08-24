@@ -21,21 +21,28 @@ Use at your own risk, on your own account.
 ## Download (desktop app)
 
 The desktop app — **reminder** — is the primary way to use this project. Get the
-latest Windows installer from the
+latest installer or disk image from the
 [Releases page](https://github.com/TrueRyoB/reminder-ios-proxy-desktop-client/releases):
 
 | File | Notes |
 |---|---|
 | `reminder_<version>_x64-setup.exe` | NSIS, per-user install. **Recommended.** |
 | `reminder_<version>_x64_en-US.msi` | MSI alternative; normally unnecessary. |
+| `reminder_<version>_aarch64.dmg` | Apple Silicon macOS disk image. |
 
-The installer is **not code-signed**, so Windows SmartScreen will warn on first
-run — choose *More info* → *Run anyway*.
+The Windows installer is **not code-signed**, so Windows SmartScreen will warn
+on first run — choose *More info* → *Run anyway*.
 
-Requirements: Windows 10/11 x64, and an Apple ID with two-factor
-authentication. Notifications only fire while the app is running (it lives in
-the system tray; closing the window hides it rather than quitting), because
-Apple exposes no push mechanism for Reminders.
+The macOS app is ad-hoc signed so its bundle integrity can be checked, but it is
+**not** signed with an Apple Developer ID and is **not notarized**. On first
+launch, Control-click the app and choose *Open*, or use *System Settings →
+Privacy & Security → Open Anyway*. This free release uses no Apple certificate,
+Apple ID, or notarization secrets.
+
+Requirements: Windows 10/11 x64 or Apple Silicon macOS, and an Apple ID with
+two-factor authentication. Notifications only fire while the app is running
+(it lives in the system tray; closing the window hides it rather than quitting),
+because Apple exposes no push mechanism for Reminders.
 
 The CLI below (`reminder-proxy-client`) is a debugging/verification tool for the
 same core library, not the intended end-user surface.
@@ -44,44 +51,39 @@ same core library, not the intended end-user surface.
 
 | Secret | Stored | Protection |
 |---|---|---|
-| iCloud session + trust tokens (`auth_state.json`) | `%APPDATA%\reminder-proxy-client\data\` | DPAPI-encrypted (user scope) |
-| iCloud session cookies (`cookies.json`) | same | DPAPI-encrypted (user scope) |
+| iCloud session + trust tokens (`auth_state.json`) | app data directory | Windows: DPAPI; macOS: encrypted with an installation key in Keychain |
+| iCloud session cookies (`cookies.json`) | same | Windows: DPAPI; macOS: encrypted with an installation key in Keychain |
 | Apple ID password | **not stored** by the desktop app | — |
 
 The desktop app never writes your password anywhere; it clears any copy an
 earlier version left in Windows Credential Manager on startup. The CLI stores
 one only if you pass `--save-password`, and `forget-password` deletes it.
 
-DPAPI encryption means a copy of the folder is useless on its own — a backup, a
-cloud-synced copy, another Windows account, or an offline disk image cannot be
-decrypted without your Windows logon. **It does not isolate the data from other
-programs you run as the same Windows user.** Windows provides no per-application
-boundary for a normal desktop app: same-user processes can decrypt these files,
-read Credential Manager, or read this app's memory. If you need a boundary that
-holds against same-user code, the session has to be locked behind a passphrase
-that is never stored — open an issue if you want that mode.
+The protected session file is useless on its own: Windows requires the same
+Windows account, while macOS requires the matching Keychain item. **Neither
+platform fully isolates the data from other processes running as the same
+user.** If you need a boundary that holds against same-user code, the session
+has to be locked behind a passphrase that is never stored — open an issue if you
+want that mode.
 
 ## Features
 
-- **Real-time-ish notifications**: background polling + Windows toast
+- **Real-time-ish notifications**: background polling + native system
   notifications for due reminders (no Apple push exists for Reminders, so
   this requires the process to be running).
 - **Manual reordering**: rewrites the list's `ReminderIDs` field directly —
   not exposed by any other known third-party client.
 - **Quick edits**: priority, flag, and moving a reminder to a different list,
   all from the command line.
-- **Session persistence**: logs in once (Apple ID password + 2FA), then
-  reuses the session via Windows Credential Manager + a persisted cookie
-  jar — no repeated password/2FA prompts.
+- **Session persistence**: logs in once (Apple ID password + 2FA), then reuses
+  the encrypted persisted session — no repeated password/2FA prompts.
 
 ## Requirements
 
-- Windows (uses Windows Credential Manager and the WinRT toast notification
-  API; does not build on other platforms)
+- Windows 10/11 x64 or Apple Silicon macOS
 - Rust (stable toolchain)
 
-macOS compilation is being introduced incrementally. Until the macOS secure
-storage and notification work is complete, it is not a supported runtime or
+macOS releases are built for Apple Silicon. Intel macOS is not currently a
 release target.
 
 ## Building
