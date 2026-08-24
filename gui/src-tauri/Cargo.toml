@@ -1,6 +1,6 @@
 [package]
 name = "gui"
-version = "0.1.3"
+version = "0.1.4"
 description = "reminder -- desktop proxy client for iOS Reminders (Tauri frontend host)"
 authors = ["TrueRyoB"]
 license = "MIT"
