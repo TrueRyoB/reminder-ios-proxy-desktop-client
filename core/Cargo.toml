@@ -44,8 +44,15 @@ windows-sys = { version = "0.60", features = [
     "Win32_System_Registry",
 ] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# The Keychain keeps only the per-install encryption key. Session files remain
+# in the existing data directory, encrypted with authenticated encryption.
+keyring = { version = "3", features = ["apple-native"] }
+chacha20poly1305 = "0.10"
+
 [build-dependencies]
 prost-build = "0.13"
 protoc-bin-vendored = "3"
 
 [dev-dependencies]
+chacha20poly1305 = "0.10"
