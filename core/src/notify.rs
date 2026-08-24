@@ -1,7 +1,7 @@
-//! Windows toast notifications via `notify-rust` (wraps the WinRT toast
-//! notification API). Requires the calling process to be running while the
-//! notification fires -- there is no way to wake up when fully closed, since
-//! Apple exposes no push mechanism for Reminders (see project notes).
+//! Desktop notifications via `notify-rust`: WinRT on Windows and
+//! UserNotifications on macOS. The process must be running while a notification
+//! fires -- Apple exposes no Reminders push mechanism that can wake it when
+//! fully closed.
 
 use anyhow::Result;
 #[cfg(windows)]
@@ -78,12 +78,14 @@ fn register_windows_aumid() -> Result<()> {
     result
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 pub fn send(title: &str, body: &str) -> Result<()> {
     #[cfg(windows)]
-    if let Err(error) = register_windows_aumid() {
-        tracing::error!(error = %error, aumid = WINDOWS_AUMID, "Windows toast AUMID registration failed");
-        return Err(error).context("failed to register Windows toast identity");
+    {
+        if let Err(error) = register_windows_aumid() {
+            tracing::error!(error = %error, aumid = WINDOWS_AUMID, "Windows toast AUMID registration failed");
+            return Err(error).context("failed to register Windows toast identity");
+        }
     }
 
     let mut notification = notify_rust::Notification::new();
@@ -94,15 +96,14 @@ pub fn send(title: &str, body: &str) -> Result<()> {
     #[cfg(windows)]
     notification.app_id(WINDOWS_AUMID);
     if let Err(error) = notification.show() {
-        tracing::error!(error = %error, "Windows toast delivery failed");
-        return Err(error).context("failed to show Windows toast notification");
+        tracing::error!(error = %error, "desktop notification delivery failed");
+        return Err(anyhow::anyhow!("failed to show desktop notification: {error}"));
     }
     Ok(())
 }
 
-/// macOS notification delivery is implemented separately from the Windows
-/// WinRT backend. Do not pretend a successful build means notifications work.
-#[cfg(not(windows))]
+/// Linux and other platforms have no supported notification backend yet.
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn send(_: &str, _: &str) -> Result<()> {
     anyhow::bail!("desktop notifications are not implemented for this platform")
 }

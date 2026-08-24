@@ -66,14 +66,14 @@ enum Commands {
     },
     /// Soft-delete a reminder.
     Delete { reminder_id: String },
-    /// Fire a test Windows toast notification. Does not touch any iCloud
-    /// data or require login -- purely local.
+    /// Fire a test desktop notification. Does not touch any iCloud data or
+    /// require login -- purely local.
     TestNotify,
     /// Delete the Apple ID password from Windows Credential Manager (only
     /// ever written by an explicit `--save-password`, or by app versions
     /// before 0.1.1). Does not touch the persisted session.
     ForgetPassword,
-    /// Poll for due reminders and fire Windows toast notifications.
+    /// Poll for due reminders and fire desktop notifications.
     /// Only works while this process is running -- Apple exposes no push
     /// mechanism for Reminders, so there is no way to wake up otherwise.
     Watch {
