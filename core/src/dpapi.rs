@@ -28,15 +28,20 @@
 //! working without being aimed at this app specifically.
 
 use anyhow::{bail, Result};
+
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::LocalFree;
+#[cfg(windows)]
 use windows_sys::Win32::Security::Cryptography::{
     CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
 };
 
 /// Changing this invalidates every previously sealed file (the app then falls
 /// back to a fresh login), so version it rather than editing in place.
+#[cfg(windows)]
 const ENTROPY: &[u8] = b"reminder-proxy-client/session-v1";
 
+#[cfg(windows)]
 fn blob(bytes: &[u8]) -> CRYPT_INTEGER_BLOB {
     CRYPT_INTEGER_BLOB {
         cbData: bytes.len() as u32,
@@ -52,6 +57,7 @@ fn blob(bytes: &[u8]) -> CRYPT_INTEGER_BLOB {
 /// # Safety
 /// `out` must be a blob successfully written by DPAPI (non-null `pbData`
 /// valid for `cbData` bytes) that has not already been freed.
+#[cfg(windows)]
 unsafe fn take(out: &CRYPT_INTEGER_BLOB) -> Vec<u8> {
     // Edition 2024: an `unsafe fn` body is not implicitly an unsafe block.
     unsafe {
@@ -61,6 +67,7 @@ unsafe fn take(out: &CRYPT_INTEGER_BLOB) -> Vec<u8> {
     }
 }
 
+#[cfg(windows)]
 pub fn protect(plaintext: &[u8]) -> Result<Vec<u8>> {
     let input = blob(plaintext);
     let entropy = blob(ENTROPY);
@@ -87,6 +94,7 @@ pub fn protect(plaintext: &[u8]) -> Result<Vec<u8>> {
     Ok(unsafe { take(&out) })
 }
 
+#[cfg(windows)]
 pub fn unprotect(sealed: &[u8]) -> Result<Vec<u8>> {
     let input = blob(sealed);
     let entropy = blob(ENTROPY);
@@ -113,7 +121,20 @@ pub fn unprotect(sealed: &[u8]) -> Result<Vec<u8>> {
     Ok(unsafe { take(&out) })
 }
 
-#[cfg(test)]
+/// There is intentionally no plaintext fallback outside Windows. macOS
+/// support is supplied by the Keychain-backed implementation in Issue #6.
+#[cfg(not(windows))]
+pub fn protect(_: &[u8]) -> Result<Vec<u8>> {
+    bail!("secure session storage is not implemented for this platform")
+}
+
+/// See [`protect`]. A sealed Windows DPAPI blob cannot be read on another OS.
+#[cfg(not(windows))]
+pub fn unprotect(_: &[u8]) -> Result<Vec<u8>> {
+    bail!("secure session storage is not implemented for this platform")
+}
+
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 

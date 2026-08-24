@@ -14,7 +14,7 @@ struct Cli {
     apple_id: Option<String>,
 
     /// Save the Apple ID password to Windows Credential Manager so later runs
-    /// skip the prompt.
+    /// skip the prompt. This option is unavailable outside Windows.
     ///
     /// Off by default, and the GUI never does this: Credential Manager
     /// entries are scoped to the Windows *user*, not to an application, so
@@ -262,14 +262,7 @@ async fn ensure_login(apple_id: &str, save_password: bool) -> Result<(reqwest::C
     let dir = session_store::data_dir()?;
     let mut client = auth::AppleAuthClient::new(apple_id)?;
 
-    let keyring_entry = keyring::Entry::new(bootstrap::KEYRING_SERVICE, apple_id)?;
-    let (password, from_keyring) = match keyring_entry.get_password() {
-        Ok(p) => (p, true),
-        Err(_) => (
-            rpassword::prompt_password(format!("{apple_id} のパスワード: "))?,
-            false,
-        ),
-    };
+    let (password, from_keyring) = saved_password_or_prompt(apple_id)?;
 
     let outcome = client.login(&password).await?;
     let data = match outcome {
@@ -284,8 +277,42 @@ async fn ensure_login(apple_id: &str, save_password: bool) -> Result<(reqwest::C
 
     // Only ever written on an explicit opt-in -- see the `--save-password`
     // doc comment for why storing it is not the default.
+    save_password_if_requested(apple_id, &password, from_keyring, save_password)?;
+
+    bootstrap::persist_state(&client, &dir)?;
+    Ok((client.http_client(), client.client_id().to_string(), data))
+}
+
+#[cfg(windows)]
+fn saved_password_or_prompt(apple_id: &str) -> Result<(String, bool)> {
+    let entry = keyring::Entry::new(bootstrap::KEYRING_SERVICE, apple_id)?;
+    match entry.get_password() {
+        Ok(password) => Ok((password, true)),
+        Err(_) => Ok((
+            rpassword::prompt_password(format!("{apple_id} のパスワード: "))?,
+            false,
+        )),
+    }
+}
+
+#[cfg(not(windows))]
+fn saved_password_or_prompt(apple_id: &str) -> Result<(String, bool)> {
+    Ok((
+        rpassword::prompt_password(format!("{apple_id} のパスワード: "))?,
+        false,
+    ))
+}
+
+#[cfg(windows)]
+fn save_password_if_requested(
+    apple_id: &str,
+    password: &str,
+    from_keyring: bool,
+    save_password: bool,
+) -> Result<()> {
     if save_password && !from_keyring {
-        match keyring_entry.set_password(&password) {
+        let entry = keyring::Entry::new(bootstrap::KEYRING_SERVICE, apple_id)?;
+        match entry.set_password(password) {
             Ok(()) => eprintln!(
                 "[注意] パスワードを Windows 資格情報マネージャーに保存しました。\
                  同じユーザーで動く他のプロセスから読み取れます(forget-password で削除)。"
@@ -293,9 +320,15 @@ async fn ensure_login(apple_id: &str, save_password: bool) -> Result<(reqwest::C
             Err(e) => eprintln!("[警告] パスワードをキーリングに保存できませんでした: {e}"),
         }
     }
+    Ok(())
+}
 
-    bootstrap::persist_state(&client, &dir)?;
-    Ok((client.http_client(), client.client_id().to_string(), data))
+#[cfg(not(windows))]
+fn save_password_if_requested(_: &str, _: &str, _: bool, save_password: bool) -> Result<()> {
+    if save_password {
+        anyhow::bail!("--save-password is currently supported only on Windows")
+    }
+    Ok(())
 }
 
 async fn login_test(apple_id: &str, save_password: bool) -> Result<()> {

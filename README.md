@@ -80,6 +80,10 @@ that is never stored — open an issue if you want that mode.
   API; does not build on other platforms)
 - Rust (stable toolchain)
 
+macOS compilation is being introduced incrementally. Until the macOS secure
+storage and notification work is complete, it is not a supported runtime or
+release target.
+
 ## Building
 
 ```

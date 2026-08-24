@@ -21,6 +21,7 @@ pub const KEYRING_SERVICE: &str = "reminder-proxy-client";
 /// poor trade, so the GUI no longer writes one and calls this on startup to
 /// clear anything an earlier version left behind. The CLI only writes one
 /// when explicitly asked with `--save-password`.
+#[cfg(windows)]
 pub fn forget_stored_password(apple_id: &str) -> Result<bool> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, apple_id)?;
     match entry.delete_credential() {
@@ -28,6 +29,14 @@ pub fn forget_stored_password(apple_id: &str) -> Result<bool> {
         Err(keyring::Error::NoEntry) => Ok(false),
         Err(e) => Err(e.into()),
     }
+}
+
+/// There are no legacy Windows Credential Manager records to remove on a
+/// non-Windows system. A future macOS password-storage feature must use
+/// Keychain explicitly rather than enabling keyring's mock fallback.
+#[cfg(not(windows))]
+pub fn forget_stored_password(_: &str) -> Result<bool> {
+    Ok(false)
 }
 
 /// pyicloud's RemindersService uses the shared CloudKit database webservice

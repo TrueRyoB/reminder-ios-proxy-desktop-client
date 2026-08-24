@@ -19,12 +19,6 @@ rand = "0.8"
 base64 = "0.22"
 hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
-# `windows-native` is NOT a default feature: keyring 3's cfg cascade falls back
-# to `pub use mock as default` (an in-process, non-persistent store) when no
-# backend feature is on, so without this the password we stash for silent
-# re-login after a full session expiry never actually reaches the Windows
-# Credential Manager and is gone on the next launch.
-keyring = { version = "3", features = ["windows-native"] }
 anyhow = "1"
 thiserror = "1"
 chrono = { version = "0.4", features = ["serde"] }
@@ -35,6 +29,11 @@ prost = "0.13"
 flate2 = "1"
 
 [target.'cfg(windows)'.dependencies]
+# `windows-native` is NOT a default feature: keyring 3's cfg cascade falls back
+# to `pub use mock as default` (an in-process, non-persistent store) when no
+# backend feature is on. The desktop app only removes legacy entries; it never
+# writes an Apple ID password.
+keyring = { version = "3", features = ["windows-native"] }
 notify-rust = "4"
 # DPAPI (CryptProtectData) for at-rest encryption of the persisted session --
 # see src/dpapi.rs. Win32_Foundation is needed for LocalFree, which frees the
