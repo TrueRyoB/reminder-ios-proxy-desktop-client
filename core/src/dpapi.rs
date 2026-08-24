@@ -1,27 +1,25 @@
-//! At-rest encryption for the persisted iCloud session, via Windows DPAPI
-//! (`CryptProtectData`, user scope).
+//! At-rest encryption for the persisted iCloud session. Windows uses DPAPI;
+//! macOS keeps a per-install encryption key in Keychain and encrypts the
+//! session files with XChaCha20-Poly1305.
 //!
 //! # What this does and does not protect against
 //!
-//! Be precise about this, because DPAPI is easy to over-claim.
+//! Be precise about this, because OS credential stores are easy to over-claim.
 //!
 //! Protected: the sealed bytes are useless to anyone who merely *obtains the
-//! file*. Decryption requires the logon secret of the Windows user account
-//! that sealed it, so a copied `%APPDATA%` folder, a backup, a folder picked
-//! up by a cloud-sync client, a second account on the same machine, or an
-//! offline disk image all yield nothing. This matters here because
+//! file*. Decryption requires the Windows logon secret (DPAPI) or the macOS
+//! Keychain item, so a copied application-data folder, a backup, a folder
+//! picked up by a cloud-sync client, a second account on the same machine, or
+//! an offline disk image all yield nothing. This matters here because
 //! `auth_state.json` holds Apple's session *and trust* tokens: possessing
 //! them grants account access with no password and no 2FA prompt.
 //!
-//! NOT protected: another process running as the *same* Windows user. It can
-//! call `CryptUnprotectData` with the same entropy (which is compiled into
-//! this binary and therefore readable), read our process memory, or simply
-//! drive the app. Windows offers no per-application isolation for a normal
-//! desktop process -- neither DPAPI user scope nor Credential Manager
-//! provides one. The only boundary that would exclude same-user code is a
-//! key that never touches the disk, i.e. a user-supplied master passphrase
-//! entered every launch; that is a UX decision, not something to adopt
-//! silently.
+//! NOT protected: another process running as the *same* logged-in user. It
+//! can read process memory, drive the app, and may be able to access the OS
+//! credential store. Neither DPAPI nor Keychain is a per-application boundary
+//! against hostile same-user code. The only boundary that would exclude it is
+//! a user-supplied master passphrase entered every launch; that is a UX
+//! decision, not something to adopt silently.
 //!
 //! `ENTROPY` is not a secret and is not pretended to be one. Its only job is
 //! to stop a generic "decrypt every DPAPI blob in this profile" tool from
@@ -121,17 +119,126 @@ pub fn unprotect(sealed: &[u8]) -> Result<Vec<u8>> {
     Ok(unsafe { take(&out) })
 }
 
-/// There is intentionally no plaintext fallback outside Windows. macOS
-/// support is supplied by the Keychain-backed implementation in Issue #6.
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+const MACOS_KEYRING_SERVICE: &str = "reminder-proxy-client/session-key-v1";
+#[cfg(target_os = "macos")]
+const MACOS_KEYRING_ACCOUNT: &str = "default";
+#[cfg(target_os = "macos")]
+const MACOS_NONCE_LEN: usize = 24;
+
+#[cfg(target_os = "macos")]
+fn macos_session_key() -> Result<[u8; 32]> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use rand::RngCore as _;
+
+    let entry = keyring::Entry::new(MACOS_KEYRING_SERVICE, MACOS_KEYRING_ACCOUNT)?;
+    match entry.get_password() {
+        Ok(encoded) => decode_macos_key(&encoded),
+        Err(keyring::Error::NoEntry) => {
+            let mut key = [0_u8; 32];
+            rand::rngs::OsRng.fill_bytes(&mut key);
+            entry
+                .set_password(&STANDARD.encode(key))
+                .map_err(|error| anyhow::anyhow!("failed to save macOS session key in Keychain: {error}"))?;
+            Ok(key)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn decode_macos_key(encoded: &str) -> Result<[u8; 32]> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let decoded = STANDARD
+        .decode(encoded)
+        .map_err(|error| anyhow::anyhow!("invalid macOS session key in Keychain: {error}"))?;
+    decoded
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("invalid macOS session key length in Keychain"))
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn seal_with_key(key: &[u8; 32], nonce: &[u8; 24], plaintext: &[u8]) -> Result<Vec<u8>> {
+    use chacha20poly1305::{KeyInit as _, XChaCha20Poly1305, XNonce, aead::Aead as _};
+
+    let cipher = XChaCha20Poly1305::new_from_slice(key)
+        .map_err(|error| anyhow::anyhow!("could not initialize session cipher: {error}"))?;
+    cipher
+        .encrypt(XNonce::from_slice(nonce), plaintext)
+        .map_err(|error| anyhow::anyhow!("could not encrypt session data: {error}"))
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn open_with_key(key: &[u8; 32], nonce: &[u8; 24], ciphertext: &[u8]) -> Result<Vec<u8>> {
+    use chacha20poly1305::{KeyInit as _, XChaCha20Poly1305, XNonce, aead::Aead as _};
+
+    let cipher = XChaCha20Poly1305::new_from_slice(key)
+        .map_err(|error| anyhow::anyhow!("could not initialize session cipher: {error}"))?;
+    cipher
+        .decrypt(XNonce::from_slice(nonce), ciphertext)
+        .map_err(|error| anyhow::anyhow!("could not decrypt session data: {error}"))
+}
+
+#[cfg(target_os = "macos")]
+pub fn protect(plaintext: &[u8]) -> Result<Vec<u8>> {
+    use rand::RngCore as _;
+
+    let key = macos_session_key()?;
+    let mut nonce = [0_u8; MACOS_NONCE_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
+    let ciphertext = seal_with_key(&key, &nonce, plaintext)?;
+    let mut sealed = nonce.to_vec();
+    sealed.extend_from_slice(&ciphertext);
+    Ok(sealed)
+}
+
+#[cfg(target_os = "macos")]
+pub fn unprotect(sealed: &[u8]) -> Result<Vec<u8>> {
+    if sealed.len() < MACOS_NONCE_LEN {
+        bail!("macOS session data is shorter than its nonce")
+    }
+    let key = macos_session_key()?;
+    let (nonce, ciphertext) = sealed.split_at(MACOS_NONCE_LEN);
+    open_with_key(&key, nonce.try_into().expect("nonce length checked"), ciphertext)
+}
+
+/// There is intentionally no plaintext fallback on unsupported platforms.
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn protect(_: &[u8]) -> Result<Vec<u8>> {
     bail!("secure session storage is not implemented for this platform")
 }
 
 /// See [`protect`]. A sealed Windows DPAPI blob cannot be read on another OS.
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn unprotect(_: &[u8]) -> Result<Vec<u8>> {
     bail!("secure session storage is not implemented for this platform")
+}
+
+#[cfg(test)]
+mod macos_cipher_tests {
+    use super::{open_with_key, seal_with_key};
+
+    #[test]
+    fn authenticated_cipher_round_trip() {
+        let key = [7_u8; 32];
+        let nonce = [9_u8; 24];
+        let ciphertext = seal_with_key(&key, &nonce, b"session token").expect("encrypt");
+        assert_ne!(ciphertext, b"session token");
+        assert_eq!(
+            open_with_key(&key, &nonce, &ciphertext).expect("decrypt"),
+            b"session token"
+        );
+    }
+
+    #[test]
+    fn authenticated_cipher_rejects_tampering() {
+        let key = [7_u8; 32];
+        let nonce = [9_u8; 24];
+        let mut ciphertext = seal_with_key(&key, &nonce, b"session token").expect("encrypt");
+        ciphertext[0] ^= 0xff;
+        assert!(open_with_key(&key, &nonce, &ciphertext).is_err());
+    }
 }
 
 #[cfg(all(test, windows))]
