@@ -45,6 +45,9 @@
         "languages": ["Japanese", "English"],
         "displayLanguageSelector": false
       }
+    },
+    "macOS": {
+      "signingIdentity": "-"
     }
   }
 }
