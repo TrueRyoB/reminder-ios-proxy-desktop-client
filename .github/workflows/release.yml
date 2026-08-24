@@ -1,9 +1,7 @@
 name: Release
 
-# Windows only, on purpose: core/src/notify.rs depends on the WinRT toast API
-# (notify-rust is declared under `[target.'cfg(windows)']`) and credential
-# storage uses keyring's `windows-native` backend, so the other platforms do
-# not build today. See .github/workflows/ci.yml for the same note.
+# macOS releases are ad-hoc signed. They are not Developer ID signed or
+# notarized, so the release notes must retain the Gatekeeper installation note.
 
 on:
   push:
@@ -49,6 +47,19 @@ jobs:
           releaseName: reminder ${{ github.event.inputs.tag || github.ref_name }}
           releaseDraft: true
           prerelease: false
+
+      - name: Verify ad-hoc signature and write checksum
+        run: |
+          APP=$(find gui/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | grep -q 'Signature=adhoc'
+          shasum -a 256 gui/src-tauri/target/release/bundle/dmg/*.dmg > SHA256SUMS-macos.txt
+
+      - name: Attach macOS checksum
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.inputs.tag || github.ref_name }}" SHA256SUMS-macos.txt --clobber
 
   windows:
     runs-on: windows-latest
