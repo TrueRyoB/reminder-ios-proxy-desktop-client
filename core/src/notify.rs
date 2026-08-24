@@ -3,7 +3,9 @@
 //! notification fires -- there is no way to wake up when fully closed, since
 //! Apple exposes no push mechanism for Reminders (see project notes).
 
-use anyhow::{Context, Result};
+use anyhow::Result;
+#[cfg(windows)]
+use anyhow::Context;
 
 /// Stable identity for unpackaged Windows toasts.  Without this, notify-rust
 /// falls back to PowerShell's AUMID and Windows may route or suppress the
@@ -76,6 +78,7 @@ fn register_windows_aumid() -> Result<()> {
     result
 }
 
+#[cfg(windows)]
 pub fn send(title: &str, body: &str) -> Result<()> {
     #[cfg(windows)]
     if let Err(error) = register_windows_aumid() {
@@ -95,4 +98,11 @@ pub fn send(title: &str, body: &str) -> Result<()> {
         return Err(error).context("failed to show Windows toast notification");
     }
     Ok(())
+}
+
+/// macOS notification delivery is implemented separately from the Windows
+/// WinRT backend. Do not pretend a successful build means notifications work.
+#[cfg(not(windows))]
+pub fn send(_: &str, _: &str) -> Result<()> {
+    anyhow::bail!("desktop notifications are not implemented for this platform")
 }
