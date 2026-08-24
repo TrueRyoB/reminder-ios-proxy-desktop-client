@@ -50,11 +50,11 @@ jobs:
 
       - name: Verify ad-hoc signature and write checksum
         run: |
-          APP=$(find gui/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
+          APP=$(find target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
           test -n "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign -dv --verbose=4 "$APP" 2>&1 | grep -q 'Signature=adhoc'
-          shasum -a 256 gui/src-tauri/target/release/bundle/dmg/*.dmg > SHA256SUMS-macos.txt
+          shasum -a 256 target/release/bundle/dmg/*.dmg > SHA256SUMS-macos.txt
 
       - name: Attach macOS checksum
         env:
