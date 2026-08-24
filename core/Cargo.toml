@@ -34,7 +34,6 @@ flate2 = "1"
 # backend feature is on. The desktop app only removes legacy entries; it never
 # writes an Apple ID password.
 keyring = { version = "3", features = ["windows-native"] }
-notify-rust = "4"
 # DPAPI (CryptProtectData) for at-rest encryption of the persisted session --
 # see src/dpapi.rs. Win32_Foundation is needed for LocalFree, which frees the
 # buffers DPAPI returns.
@@ -49,6 +48,11 @@ windows-sys = { version = "0.60", features = [
 # in the existing data directory, encrypted with authenticated encryption.
 keyring = { version = "3", features = ["apple-native"] }
 chacha20poly1305 = "0.10"
+
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+# Uses WinRT on Windows and macOS UserNotifications on macOS. Windows-specific
+# AUMID registration stays in `notify.rs` behind `cfg(windows)`.
+notify-rust = "4"
 
 [build-dependencies]
 prost-build = "0.13"
