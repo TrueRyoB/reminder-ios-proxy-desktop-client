@@ -50,11 +50,16 @@ jobs:
 
       - name: Verify ad-hoc signature and write checksum
         run: |
-          APP=$(find target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
+          DMG=$(find target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)
+          test -n "$DMG"
+          MOUNT=$(mktemp -d)
+          trap 'hdiutil detach "$MOUNT" -quiet || true; rm -rf "$MOUNT"' EXIT
+          hdiutil attach "$DMG" -mountpoint "$MOUNT" -nobrowse -readonly
+          APP=$(find "$MOUNT" -maxdepth 2 -name '*.app' -print -quit)
           test -n "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign -dv --verbose=4 "$APP" 2>&1 | grep -q 'Signature=adhoc'
-          shasum -a 256 target/release/bundle/dmg/*.dmg > SHA256SUMS-macos.txt
+          shasum -a 256 "$DMG" > SHA256SUMS-macos.txt
 
       - name: Attach macOS checksum
         env:
